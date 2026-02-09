@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
+import { LinkTwitter } from './link-twitter'
 
 export function Navbar() {
   const navLinks = [
@@ -34,7 +35,10 @@ export function Navbar() {
               ))}
             </div>
           </div>
-          <WalletMultiButton />
+          <div className="flex items-center gap-3">
+            <LinkTwitter />
+            <WalletMultiButton />
+          </div>
         </div>
       </div>
     </nav>

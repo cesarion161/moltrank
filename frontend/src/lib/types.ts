@@ -17,6 +17,9 @@ export interface User {
   publicKey: string
   username?: string
   curatorRating: number
+  twitterUsername?: string
+  twitterId?: string
+  identityVerified?: boolean
 }
 
 export interface Comparison {
