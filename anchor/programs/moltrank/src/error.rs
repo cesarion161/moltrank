@@ -16,4 +16,16 @@ pub enum MoltRankError {
 
     #[msg("Market ID must be unique")]
     MarketIdNotUnique,
+
+    #[msg("Identity ID cannot be empty")]
+    InvalidIdentityId,
+
+    #[msg("Subscription amount must be greater than zero for realtime subscriptions")]
+    InvalidSubscriptionAmount,
+
+    #[msg("Identity already registered for this wallet")]
+    IdentityAlreadyRegistered,
+
+    #[msg("Subscription already exists for this market")]
+    SubscriptionAlreadyExists,
 }

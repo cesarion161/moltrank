@@ -29,4 +29,24 @@ pub mod moltrank {
     ) -> Result<()> {
         instructions::create_market::handler(ctx, market_id, name, submolt_id, creation_bond)
     }
+
+    /// Register identity linking wallet to X account
+    /// Links wallet public key to identity_id (hash of X account)
+    pub fn register_identity(
+        ctx: Context<RegisterIdentity>,
+        identity_id: [u8; 32],
+    ) -> Result<()> {
+        instructions::register_identity::handler(ctx, identity_id)
+    }
+
+    /// Subscribe to a market with token payment or free delay access
+    /// Transfers tokens for realtime access and updates market statistics
+    pub fn subscribe(
+        ctx: Context<Subscribe>,
+        market_id: [u8; 32],
+        amount: u64,
+        subscription_type: state::SubscriptionType,
+    ) -> Result<()> {
+        instructions::subscribe::handler(ctx, market_id, amount, subscription_type)
+    }
 }
