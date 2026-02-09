@@ -16,6 +16,7 @@ pub struct CreateMarket<'info> {
     pub market: Account<'info, Market>,
 
     #[account(
+        mut,
         seeds = [b"global_pool"],
         bump = global_pool.bump
     )]
@@ -34,8 +35,6 @@ pub fn handler(
     submolt_id: u32,
     creation_bond: u64,
 ) -> Result<()> {
-    let market = &mut ctx.accounts.market;
-
     // Validate inputs
     require!(
         name.len() <= Market::MAX_NAME_LEN,
@@ -46,17 +45,18 @@ pub fn handler(
         MoltRankError::InvalidCreationBond
     );
 
-    // Transfer creation bond from creator to market account
+    // Transfer creation bond from creator to global pool for safekeeping
     let cpi_context = CpiContext::new(
         ctx.accounts.system_program.to_account_info(),
         Transfer {
             from: ctx.accounts.creator.to_account_info(),
-            to: ctx.accounts.market.to_account_info(),
+            to: ctx.accounts.global_pool.to_account_info(),
         },
     );
     transfer(cpi_context, creation_bond)?;
 
     // Initialize market account
+    let market = &mut ctx.accounts.market;
     market.market_id = market_id;
     market.name = name;
     market.submolt_id = submolt_id;
