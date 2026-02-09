@@ -232,6 +232,11 @@ public class SettlementService {
                     .mapToDouble(Math::sqrt)
                     .sum();
 
+            if (totalSqrtStake == 0) {
+                log.warn("Total sqrt stake is 0 for pair {}, skipping reward distribution", pair.getId());
+                totalSqrtStake = 1.0; // Prevent division by zero
+            }
+
             for (Commitment commitment : majorityVoters) {
                 Curator curator = getCurator(commitment.getCuratorWallet(), pair.getRound().getMarket().getId());
                 long stakeReturn = commitment.getStake();
