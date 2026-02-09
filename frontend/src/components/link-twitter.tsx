@@ -16,7 +16,8 @@ export function LinkTwitter() {
     if (session?.user?.account && publicKey && !linkedTwitter) {
       linkIdentity()
     }
-  }, [session, publicKey])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, publicKey, linkedTwitter])
 
   const linkIdentity = async () => {
     if (!publicKey || !session?.user?.account) return
