@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 
 #[error_code]
 pub enum MoltRankError {
-    #[msg("Market name exceeds maximum length of 50 characters")]
+    #[msg("Market name exceeds maximum length of 50 bytes")]
     NameTooLong,
 
     #[msg("Creation bond amount must be greater than zero")]

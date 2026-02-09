@@ -39,7 +39,7 @@ pub struct Market {
     /// Market identifier (32-byte unique ID)
     pub market_id: [u8; 32],
 
-    /// Human-readable market name (max 50 chars)
+    /// Human-readable market name (max 50 bytes)
     pub name: String,
 
     /// Submolt ID this market belongs to
@@ -64,7 +64,7 @@ pub struct Market {
 impl Market {
     pub const LEN: usize = 8 +   // discriminator
         32 +  // market_id
-        4 + 50 + // name (String: 4 bytes length + 50 chars max)
+        4 + 50 + // name (String: 4 bytes length prefix + 50 bytes max)
         4 +   // submolt_id
         8 +   // subscription_revenue
         4 +   // subscribers
@@ -72,6 +72,6 @@ impl Market {
         4 +   // max_pairs
         1;    // bump
 
-    /// Maximum length for market name
+    /// Maximum length for market name in bytes
     pub const MAX_NAME_LEN: usize = 50;
 }
