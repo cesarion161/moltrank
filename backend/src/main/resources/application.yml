@@ -38,3 +38,6 @@ logging:
   level:
     com.moltrank: DEBUG
     org.springframework: INFO
+
+moltrank:
+  pairs-per-subscriber: 5  # K value for demand-gated pair generation formula
