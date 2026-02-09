@@ -142,3 +142,135 @@ pub enum SubscriptionType {
     /// Free access with delay
     FreeDelay,
 }
+
+/// Round for pairwise curation voting
+/// PDA seeds: [b"round", round_id (u64 as bytes)]
+#[account]
+pub struct Round {
+    /// Unique round identifier
+    pub round_id: u64,
+
+    /// Merkle root of content in this round
+    pub content_merkle_root: [u8; 32],
+
+    /// Base pool amount for this round
+    pub base_pool_amount: u64,
+
+    /// Premium pool amount for this round
+    pub premium_pool_amount: u64,
+
+    /// Round start timestamp
+    pub start_time: i64,
+
+    /// Commit phase deadline
+    pub commit_deadline: i64,
+
+    /// Reveal phase deadline
+    pub reveal_deadline: i64,
+
+    /// Bump seed for PDA derivation
+    pub bump: u8,
+}
+
+impl Round {
+    pub const LEN: usize = 8 +  // discriminator
+        8 +  // round_id
+        32 + // content_merkle_root
+        8 +  // base_pool_amount
+        8 +  // premium_pool_amount
+        8 +  // start_time
+        8 +  // commit_deadline
+        8 +  // reveal_deadline
+        1;   // bump
+}
+
+/// Pair for curation voting
+/// PDA seeds: [b"pair", round_id (u64 as bytes), pair_id (u32 as bytes)]
+#[account]
+pub struct Pair {
+    /// Unique pair identifier within the round
+    pub pair_id: u32,
+
+    /// Round this pair belongs to
+    pub round_id: u64,
+
+    /// Whether this is a golden pair (quality control)
+    pub is_golden: bool,
+
+    /// Whether this is an audit pair
+    pub is_audit: bool,
+
+    /// Escrow balance for this pair
+    pub escrow_balance: u64,
+
+    /// Total number of votes
+    pub votes_count: u32,
+
+    /// Bump seed for PDA derivation
+    pub bump: u8,
+}
+
+impl Pair {
+    pub const LEN: usize = 8 +  // discriminator
+        4 +  // pair_id
+        8 +  // round_id
+        1 +  // is_golden
+        1 +  // is_audit
+        8 +  // escrow_balance
+        4 +  // votes_count
+        1;   // bump
+}
+
+/// Commitment for commit-reveal voting
+/// PDA seeds: [b"commitment", pair_id (u32 as bytes), curator_wallet]
+#[account]
+pub struct Commitment {
+    /// Hash of the commitment (keccak256)
+    pub commitment_hash: [u8; 32],
+
+    /// Encrypted reveal payload
+    pub encrypted_reveal: Vec<u8>,
+
+    /// Curator's wallet
+    pub curator_wallet: Pubkey,
+
+    /// Pair ID this commitment is for
+    pub pair_id: u32,
+
+    /// Round ID
+    pub round_id: u64,
+
+    /// Stake amount locked in this commitment
+    pub stake_amount: u64,
+
+    /// Timestamp of commitment
+    pub timestamp: i64,
+
+    /// Whether commitment has been revealed
+    pub revealed: bool,
+
+    /// Bump seed for PDA derivation
+    pub bump: u8,
+}
+
+impl Commitment {
+    /// Maximum encrypted payload size (1KB)
+    pub const MAX_ENCRYPTED_SIZE: usize = 1024;
+
+    /// Calculate space needed for a commitment with encrypted data
+    pub fn space_for(encrypted_len: usize) -> usize {
+        8 +   // discriminator
+        32 +  // commitment_hash
+        4 + encrypted_len + // encrypted_reveal (Vec: 4 bytes length + data)
+        32 +  // curator_wallet
+        4 +   // pair_id
+        8 +   // round_id
+        8 +   // stake_amount
+        8 +   // timestamp
+        1 +   // revealed
+        1     // bump
+    }
+
+    /// Maximum stake per identity per pair (500 tokens with 9 decimals)
+    pub const MAX_STAKE_PER_PAIR: u64 = 500_000_000_000;
+}

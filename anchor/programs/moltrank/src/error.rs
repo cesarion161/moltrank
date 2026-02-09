@@ -28,4 +28,37 @@ pub enum MoltRankError {
 
     #[msg("Subscription already exists for this market")]
     SubscriptionAlreadyExists,
+
+    #[msg("Round already exists")]
+    RoundAlreadyExists,
+
+    #[msg("Pair already exists")]
+    PairAlreadyExists,
+
+    #[msg("Stake amount exceeds maximum allowed per pair (500 tokens)")]
+    StakeExceedsMaximum,
+
+    #[msg("Encrypted reveal payload exceeds maximum size")]
+    EncryptedPayloadTooLarge,
+
+    #[msg("Commitment already exists for this pair and curator")]
+    CommitmentAlreadyExists,
+
+    #[msg("Commitment not found or invalid")]
+    InvalidCommitment,
+
+    #[msg("Reveal hash does not match commitment")]
+    HashMismatch,
+
+    #[msg("Outside reveal window")]
+    OutsideRevealWindow,
+
+    #[msg("Commitment already revealed")]
+    AlreadyRevealed,
+
+    #[msg("Manual reveal grace period has expired")]
+    GracePeriodExpired,
+
+    #[msg("Cannot reveal during commit phase")]
+    RevealNotYetAllowed,
 }
