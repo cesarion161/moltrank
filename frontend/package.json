@@ -28,6 +28,7 @@
     "tailwind-merge": "^2.2.0"
   },
   "devDependencies": {
+    "@types/d3-sankey": "^0.12.5",
     "@types/node": "^20.11.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
