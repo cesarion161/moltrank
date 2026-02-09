@@ -1,0 +1,43 @@
+# Gas Town
+.runtime/
+.claude/
+.beads/
+.logs/
+
+# Anchor/Solana
+anchor/target/
+anchor/.anchor/
+anchor/test-ledger/
+anchor/node_modules/
+
+# Backend (Java/Gradle)
+backend/.gradle/
+backend/build/
+backend/.idea/
+backend/*.iml
+backend/out/
+
+# Frontend (Next.js)
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/dist/
+frontend/.DS_Store
+frontend/*.local
+frontend/.env*.local
+
+# Simulation (Python)
+simulation/__pycache__/
+simulation/*.py[cod]
+simulation/*$py.class
+simulation/.venv/
+simulation/venv/
+simulation/*.egg-info/
+simulation/.pytest_cache/
+
+# General
+.DS_Store
+*.log
+*.swp
+*.swo
+*~
