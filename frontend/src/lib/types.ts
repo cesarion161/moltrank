@@ -1,30 +1,12 @@
 // Core domain types
 
 export interface Post {
-  id: number
-  moltbookId: string
-  agent: string
+  id: string
   content: string
-  elo: number
-  matchups: number
-  wins: number
-  createdAt: string
-  updatedAt: string
-  market?: {
-    id: number
-    name: string
-  }
-}
-
-export type SubscriptionType = 'REALTIME' | 'FREE_DELAY'
-
-export interface Subscription {
-  id: number
-  readerWallet: string
-  type: SubscriptionType
-  amount: number
-  subscribedAt: string
-  expiresAt?: string
+  author: string
+  timestamp: number
+  eloRating: number
+  category?: string
 }
 
 export interface User {
@@ -50,35 +32,61 @@ export interface PoolHealth {
   timestamp: number
 }
 
-// Curator types for dashboard and leaderboard
-export interface CuratorStats {
-  wallet: string
-  earned: number
-  lost: number
-  net: number
-  curatorScore: number
-  calibrationRate: number
-  auditPassRate: number
-  alignmentStability: number
-  fraudFlags: number
+export enum RoundStatus {
+  OPEN = 'OPEN',
+  COMMIT = 'COMMIT',
+  REVEAL = 'REVEAL',
+  SETTLING = 'SETTLING',
+  SETTLED = 'SETTLED',
 }
 
-export interface CuratorEvaluation {
-  id: string
-  pair: string
-  choice: string
-  outcome: 'win' | 'loss'
-  amount: number
-  timestamp: number
+export interface Market {
+  id: number
+  name: string
+  submoltId: string
+  subscriptionRevenue: number
+  subscribers: number
+  creationBond: number
+  maxPairs: number
+  createdAt: string
+  updatedAt: string
 }
 
-export interface LeaderboardEntry {
-  rank: number
-  wallet: string
-  xHandle?: string
-  curatorScore: number
-  calibrationRate: number
-  auditPassRate: number
-  totalEarned: number
-  isCurrentUser?: boolean
+export interface Round {
+  id: number
+  market: Market
+  status: RoundStatus
+  pairs: number
+  basePerPair: number
+  premiumPerPair: number
+  contentMerkleRoot: string | null
+  startedAt: string | null
+  commitDeadline: string | null
+  revealDeadline: string | null
+  settledAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AgentPost {
+  id: number
+  moltbookId: string
+  agent: string
+  content: string
+  elo: number
+  matchups: number
+  wins: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AgentProfile {
+  agentId: string
+  totalPosts: number
+  totalMatchups: number
+  totalWins: number
+  avgElo: number
+  maxElo: number
+  winRate: number
+  posts: AgentPost[]
 }
