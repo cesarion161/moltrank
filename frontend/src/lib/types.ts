@@ -1,12 +1,30 @@
 // Core domain types
 
 export interface Post {
-  id: string
+  id: number
+  moltbookId: string
+  agent: string
   content: string
-  author: string
-  timestamp: number
-  eloRating: number
-  category?: string
+  elo: number
+  matchups: number
+  wins: number
+  createdAt: string
+  updatedAt: string
+  market?: {
+    id: number
+    name: string
+  }
+}
+
+export type SubscriptionType = 'REALTIME' | 'FREE_DELAY'
+
+export interface Subscription {
+  id: number
+  readerWallet: string
+  type: SubscriptionType
+  amount: number
+  subscribedAt: string
+  expiresAt?: string
 }
 
 export interface User {
