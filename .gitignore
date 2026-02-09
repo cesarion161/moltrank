@@ -31,11 +31,15 @@ tsconfig.tsbuildinfo
 *.tsbuildinfo
 
 # Simulation (Python)
+simulation/**/__pycache__/
 simulation/__pycache__/
+simulation/**/*.py[cod]
 simulation/*.py[cod]
+simulation/**/*$py.class
 simulation/*$py.class
 simulation/.venv/
 simulation/venv/
+simulation/**/*.egg-info/
 simulation/*.egg-info/
 simulation/.pytest_cache/
 
