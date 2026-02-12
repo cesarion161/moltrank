@@ -311,6 +311,11 @@ class SimulationEngine:
             curator_result['score'] = score
             curator_result['suspended'] = should_suspend
 
+        # Withdraw total rewards from pool
+        total_rewards = sum(r.get('rewards', 0.0) for r in results.values())
+        if total_rewards > 0 and total_rewards <= round.pool.balance:
+            round.pool.withdraw(total_rewards)
+
         return results
 
     def run_round(

@@ -331,10 +331,6 @@ def main():
         config = create_alpha_sweep_scenario()
         config.simulation_config.alpha = alpha
 
-        # Update pool alpha
-        for curator_id, strategy, stake in config.curators[:10]:
-            config.curators[curator_id] = (curator_id, strategy, stake)
-
         engine, results = run_scenario(config, num_rounds=1000)  # Shorter run for sweep
 
         # Calculate average PnL

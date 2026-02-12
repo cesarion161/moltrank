@@ -15,8 +15,24 @@ Reference: PRD Sections 6.4, 8.5
 import json
 import os
 from typing import List, Dict, Any, Tuple
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+
+
+def format_large_number(x, p=None):
+    """Format large numbers with K, M, B, T suffixes."""
+    if abs(x) >= 1e12:
+        return f'${x/1e12:.1f}T'
+    elif abs(x) >= 1e9:
+        return f'${x/1e9:.1f}B'
+    elif abs(x) >= 1e6:
+        return f'${x/1e6:.1f}M'
+    elif abs(x) >= 1e3:
+        return f'${x/1e3:.1f}K'
+    else:
+        return f'${x:.0f}'
 
 
 def plot_pool_balance(
@@ -34,16 +50,46 @@ def plot_pool_balance(
     Returns:
         JSON data points for export
     """
-    plt.figure(figsize=(12, 6))
-    plt.plot(list(rounds), balances, linewidth=2, color='#2563eb')
-    plt.xlabel('Round', fontsize=12)
-    plt.ylabel('Pool Balance ($)', fontsize=12)
-    plt.title('GlobalPool Solvency: Balance Over 10K Rounds', fontsize=14, fontweight='bold')
-    plt.grid(True, alpha=0.3)
-    plt.gca().yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: f'${x:,.0f}'))
-    plt.tight_layout()
+    import math
+
+    # Filter out NaN and Inf values
+    filtered_data = [(r, b) for r, b in zip(rounds, balances)
+                     if math.isfinite(b)]
+
+    if not filtered_data:
+        # All values are invalid, create dummy chart
+        print("Warning: All pool balance values are NaN or Inf, creating dummy chart")
+        filtered_data = [(0, 0), (len(balances)-1, 0)]
+
+    plot_rounds, plot_balances = zip(*filtered_data)
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.plot(list(plot_rounds), plot_balances, linewidth=2, color='#2563eb')
+    ax.set_xlabel('Round', fontsize=12)
+    ax.set_ylabel('Pool Balance ($)', fontsize=12)
+    ax.set_title('GlobalPool Solvency: Balance Over 10K Rounds', fontsize=14, fontweight='bold')
+    ax.grid(True, alpha=0.3)
+
+    # Set explicit axis limits to avoid overflow
+    if plot_rounds:
+        ax.set_xlim(min(plot_rounds), max(plot_rounds))
+    if plot_balances:
+        ymin, ymax = min(plot_balances), max(plot_balances)
+        if ymin != ymax:
+            margin = (ymax - ymin) * 0.1
+            ax.set_ylim(ymin - margin, ymax + margin)
+
+    # Use MaxNLocator to limit number of ticks
+    ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=8))
+    ax.yaxis.set_major_formatter(ticker.FuncFormatter(format_large_number))
+
+    try:
+        plt.tight_layout()
+    except (ValueError, RuntimeWarning, Exception):
+        pass  # Skip tight_layout if it fails
+
     plt.savefig(output_path, dpi=300)
-    plt.close()
+    plt.close(fig)
 
     # Return JSON data
     return [
@@ -88,8 +134,11 @@ def plot_cumulative_pnl_by_agent(
               fontsize=14, fontweight='bold')
     plt.legend(fontsize=10)
     plt.grid(True, alpha=0.3)
-    plt.gca().yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: f'${x:,.0f}'))
-    plt.tight_layout()
+    plt.gca().yaxis.set_major_formatter(ticker.FuncFormatter(format_large_number))
+    try:
+        plt.tight_layout()
+    except (ValueError, RuntimeWarning):
+        pass  # Skip tight_layout if it fails with large numbers
     plt.savefig(output_path, dpi=300)
     plt.close()
 
@@ -181,8 +230,11 @@ def plot_alpha_sensitivity(
     plt.title('Alpha Sensitivity: Impact on Curator Earnings', fontsize=14, fontweight='bold')
     plt.legend(fontsize=10)
     plt.grid(True, alpha=0.3)
-    plt.gca().yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: f'${x:,.0f}'))
-    plt.tight_layout()
+    plt.gca().yaxis.set_major_formatter(ticker.FuncFormatter(format_large_number))
+    try:
+        plt.tight_layout()
+    except (ValueError, RuntimeWarning):
+        pass  # Skip tight_layout if it fails with large numbers
     plt.savefig(output_path, dpi=300)
     plt.close()
 
@@ -278,7 +330,10 @@ def plot_audit_detection_rate(
     plt.legend(fontsize=10)
     plt.grid(True, alpha=0.3)
     plt.ylim(0, 1.0)
-    plt.tight_layout()
+    try:
+        plt.tight_layout()
+    except (ValueError, RuntimeWarning):
+        pass  # Skip tight_layout if it fails with large numbers
     plt.savefig(output_path, dpi=300)
     plt.close()
 
@@ -320,8 +375,11 @@ def plot_bot_vs_human_earnings(
     plt.title('Bot vs Human Earnings: Impact of Bot Infiltration', fontsize=14, fontweight='bold')
     plt.legend(fontsize=10)
     plt.grid(True, alpha=0.3)
-    plt.gca().yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: f'${x:,.0f}'))
-    plt.tight_layout()
+    plt.gca().yaxis.set_major_formatter(ticker.FuncFormatter(format_large_number))
+    try:
+        plt.tight_layout()
+    except (ValueError, RuntimeWarning):
+        pass  # Skip tight_layout if it fails with large numbers
     plt.savefig(output_path, dpi=300)
     plt.close()
 
@@ -372,7 +430,10 @@ def plot_feed_quality_over_time(
               fontsize=14, fontweight='bold')
     plt.legend(fontsize=10)
     plt.grid(True, alpha=0.3)
-    plt.tight_layout()
+    try:
+        plt.tight_layout()
+    except (ValueError, RuntimeWarning):
+        pass  # Skip tight_layout if it fails with large numbers
     plt.savefig(output_path, dpi=300)
     plt.close()
 
