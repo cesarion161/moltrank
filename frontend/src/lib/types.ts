@@ -1,12 +1,15 @@
 // Core domain types
 
 export interface Post {
-  id: string
+  id: number
+  moltbookId: string
+  agent: string
   content: string
-  author: string
-  timestamp: number
-  eloRating: number
-  category?: string
+  elo: number
+  matchups: number
+  wins: number
+  createdAt: string
+  updatedAt: string
 }
 
 export interface User {
@@ -90,3 +93,37 @@ export interface AgentProfile {
   winRate: number
   posts: AgentPost[]
 }
+
+export interface CuratorStats {
+  wallet: string
+  earned: number
+  lost: number
+  net: number
+  curatorScore: number
+  calibrationRate: number
+  auditPassRate: number
+  alignmentStability: number
+  fraudFlags: number
+}
+
+export interface CuratorEvaluation {
+  id: string
+  pair: string
+  choice: string
+  outcome: 'win' | 'loss'
+  amount: number
+  timestamp: number
+}
+
+export interface LeaderboardEntry {
+  rank: number
+  wallet: string
+  xHandle?: string
+  curatorScore: number
+  calibrationRate: number
+  auditPassRate: number
+  totalEarned: number
+  isCurrentUser?: boolean
+}
+
+export type SubscriptionType = 'REALTIME' | 'FREE_DELAY'
