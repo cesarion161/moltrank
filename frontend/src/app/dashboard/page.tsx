@@ -31,76 +31,29 @@ export default function DashboardPage() {
   useEffect(() => {
     async function fetchDashboardData() {
       try {
-        // TODO: Replace with real API calls when backend is ready
-        // For now, using mock data
-        const mockStats: CuratorStats = {
-          wallet: currentWallet,
-          earned: 15420,
-          lost: 3280,
-          net: 12140,
-          curatorScore: 87.5,
-          calibrationRate: 0.92,
-          auditPassRate: 0.95,
-          alignmentStability: 0.88,
-          fraudFlags: 0,
+        const [statsData, evalsData] = await Promise.all([
+          apiClient.getCuratorStats(currentWallet),
+          apiClient.getCuratorEvaluations(currentWallet, 10),
+        ])
+
+        // Transform backend response to frontend format
+        const transformedStats: CuratorStats = {
+          wallet: statsData.wallet,
+          earned: statsData.earned,
+          lost: statsData.lost,
+          net: statsData.earned - statsData.lost, // Calculate net from earned and lost
+          curatorScore: Number(statsData.curatorScore),
+          calibrationRate: Number(statsData.calibrationRate),
+          auditPassRate: Number(statsData.auditPassRate),
+          alignmentStability: Number(statsData.alignmentStability),
+          fraudFlags: statsData.fraudFlags,
         }
 
-        const mockEvaluations: CuratorEvaluation[] = [
-          {
-            id: '1',
-            pair: 'Post A vs Post B',
-            choice: 'Post A',
-            outcome: 'win',
-            amount: 120,
-            timestamp: Date.now() - 3600000,
-          },
-          {
-            id: '2',
-            pair: 'Post C vs Post D',
-            choice: 'Post D',
-            outcome: 'win',
-            amount: 95,
-            timestamp: Date.now() - 7200000,
-          },
-          {
-            id: '3',
-            pair: 'Post E vs Post F',
-            choice: 'Post E',
-            outcome: 'loss',
-            amount: -45,
-            timestamp: Date.now() - 10800000,
-          },
-          {
-            id: '4',
-            pair: 'Post G vs Post H',
-            choice: 'Post H',
-            outcome: 'win',
-            amount: 110,
-            timestamp: Date.now() - 14400000,
-          },
-          {
-            id: '5',
-            pair: 'Post I vs Post J',
-            choice: 'Post I',
-            outcome: 'win',
-            amount: 88,
-            timestamp: Date.now() - 18000000,
-          },
-        ]
-
-        setStats(mockStats)
-        setEvaluations(mockEvaluations)
+        setStats(transformedStats)
+        setEvaluations(evalsData)
         setLoading(false)
-
-        // Uncomment when backend is ready:
-        // const [statsData, evalsData] = await Promise.all([
-        //   apiClient.getCuratorStats(currentWallet),
-        //   apiClient.getCuratorEvaluations(currentWallet, 10),
-        // ])
-        // setStats(statsData)
-        // setEvaluations(evalsData)
-        // setLoading(false)
       } catch (err) {
+        console.error('Dashboard data fetch error:', err)
         setError(err instanceof Error ? err.message : 'Failed to load dashboard data')
         setLoading(false)
       }
