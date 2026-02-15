@@ -82,4 +82,7 @@ pub enum MoltRankError {
 
     #[msg("Arithmetic overflow in settlement calculations")]
     SettlementArithmeticOverflow,
+
+    #[msg("Invalid remaining accounts layout")]
+    InvalidRemainingAccounts,
 }

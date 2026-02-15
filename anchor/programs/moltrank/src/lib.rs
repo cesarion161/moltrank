@@ -126,12 +126,15 @@ pub mod moltrank {
     }
 
     /// Settle a pair and distribute payouts after reveal period ends
-    /// Implements asymmetric payouts based on majority/minority votes
+    /// Implements asymmetric payouts with quadratic-weighted rewards for majority,
+    /// 80/20 forfeit for minority, and full forfeit for non-revealed curators.
+    /// Golden pairs decrease alignment score for wrong answers.
     pub fn settle_pair<'info>(
         ctx: Context<'_, '_, 'info, 'info, SettlePair<'info>>,
         pair_id: u32,
         round_id: u64,
+        total_pairs: u32,
     ) -> Result<()> {
-        instructions::settle_pair::handler(ctx, pair_id, round_id)
+        instructions::settle_pair::handler(ctx, pair_id, round_id, total_pairs)
     }
 }
