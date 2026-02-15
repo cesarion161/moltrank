@@ -65,11 +65,10 @@ pub struct CuratorSettlement {
     pub reward: u64,
 }
 
-pub fn handler(
-    ctx: Context<SettlePair>,
+pub fn handler<'info>(
+    ctx: Context<'_, '_, 'info, 'info, SettlePair<'info>>,
     _pair_id: u32,
     _round_id: u64,
-    commitment_accounts: Vec<AccountInfo>,
 ) -> Result<()> {
     let pair = &mut ctx.accounts.pair;
     let round = &ctx.accounts.round;
@@ -82,10 +81,10 @@ pub fn handler(
         MoltRankError::CannotSettleDuringVoting
     );
 
-    // Parse commitment accounts
-    let mut commitments: Vec<(Pubkey, Account<Commitment>)> = Vec::new();
-    for account_info in commitment_accounts.iter() {
-        let commitment: Account<Commitment> = Account::try_from(account_info)?;
+    // Parse commitment accounts from remaining_accounts
+    let mut commitments: Vec<(Pubkey, Account<'info, Commitment>)> = Vec::new();
+    for account_info in ctx.remaining_accounts.iter() {
+        let commitment: Account<'info, Commitment> = Account::try_from(account_info)?;
         commitments.push((account_info.key(), commitment));
     }
 
@@ -203,12 +202,14 @@ pub fn handler(
 
     // Transfer forfeited stakes to global pool
     if total_forfeited > 0 {
-        let seeds = &[
+        let pair_id_bytes = pair.pair_id.to_le_bytes();
+        let bump = [ctx.bumps.pair_escrow];
+        let seeds: &[&[u8]] = &[
             b"pair_escrow",
-            pair.pair_id.to_le_bytes().as_ref(),
-            &[ctx.bumps.pair_escrow],
+            pair_id_bytes.as_ref(),
+            &bump,
         ];
-        let signer = &[&seeds[..]];
+        let signer = &[seeds];
 
         let cpi_accounts = Transfer {
             from: ctx.accounts.pair_escrow.to_account_info(),

@@ -128,11 +128,10 @@ pub mod moltrank {
     /// Settle a pair and distribute payouts after reveal period ends
     /// Implements asymmetric payouts based on majority/minority votes
     pub fn settle_pair<'info>(
-        ctx: Context<'_, '_, '_, 'info, SettlePair<'info>>,
+        ctx: Context<'_, '_, 'info, 'info, SettlePair<'info>>,
         pair_id: u32,
         round_id: u64,
     ) -> Result<()> {
-        let commitment_accounts = ctx.remaining_accounts.to_vec();
-        instructions::settle_pair::handler(ctx, pair_id, round_id, commitment_accounts)
+        instructions::settle_pair::handler(ctx, pair_id, round_id)
     }
 }

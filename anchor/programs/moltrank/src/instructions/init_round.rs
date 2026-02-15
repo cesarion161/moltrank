@@ -12,14 +12,14 @@ pub struct InitRound<'info> {
         seeds = [b"round", round_id.to_le_bytes().as_ref()],
         bump
     )]
-    pub round: Account<'info, Round>,
+    pub round: Box<Account<'info, Round>>,
 
     #[account(
         mut,
         seeds = [b"global_pool"],
         bump = global_pool.bump
     )]
-    pub global_pool: Account<'info, GlobalPool>,
+    pub global_pool: Box<Account<'info, GlobalPool>>,
 
     /// Round escrow token account
     #[account(
@@ -30,7 +30,7 @@ pub struct InitRound<'info> {
         token::mint = token_mint,
         token::authority = round_escrow
     )]
-    pub round_escrow: Account<'info, TokenAccount>,
+    pub round_escrow: Box<Account<'info, TokenAccount>>,
 
     /// Source token account for funding
     #[account(mut)]
