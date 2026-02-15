@@ -48,6 +48,7 @@ pub fn handler(
     pair_id: u32,
     is_golden: bool,
     is_audit: bool,
+    golden_answer: Option<u8>,
 ) -> Result<()> {
     let pair = &mut ctx.accounts.pair;
 
@@ -58,6 +59,8 @@ pub fn handler(
     pair.is_audit = is_audit;
     pair.escrow_balance = 0;
     pair.votes_count = 0;
+    pair.golden_answer = golden_answer;
+    pair.settled = false;
     pair.bump = ctx.bumps.pair;
 
     msg!(

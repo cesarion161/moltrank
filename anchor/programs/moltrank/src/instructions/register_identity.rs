@@ -26,6 +26,7 @@ pub fn handler(ctx: Context<RegisterIdentity>, identity_id: [u8; 32]) -> Result<
     identity.identity_id = identity_id;
     identity.verified = false; // Initially unverified, verification happens separately
     identity.created_at = clock.unix_timestamp;
+    identity.alignment_score = 0;
     identity.bump = ctx.bumps.identity;
 
     msg!("Identity registered for wallet: {}", identity.wallet);

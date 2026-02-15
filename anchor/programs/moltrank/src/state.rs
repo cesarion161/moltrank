@@ -92,6 +92,9 @@ pub struct Identity {
     /// Creation timestamp
     pub created_at: i64,
 
+    /// Alignment score (starts at 0, decreases on golden pair errors)
+    pub alignment_score: i32,
+
     /// Bump seed for PDA derivation
     pub bump: u8,
 }
@@ -102,6 +105,7 @@ impl Identity {
         32 + // identity_id
         1 +  // verified
         8 +  // created_at
+        4 +  // alignment_score
         1;   // bump
 }
 
@@ -206,6 +210,12 @@ pub struct Pair {
     /// Total number of votes
     pub votes_count: u32,
 
+    /// Golden pair correct answer (0 or 1), None if not golden
+    pub golden_answer: Option<u8>,
+
+    /// Whether this pair has been settled
+    pub settled: bool,
+
     /// Bump seed for PDA derivation
     pub bump: u8,
 }
@@ -218,6 +228,8 @@ impl Pair {
         1 +  // is_audit
         8 +  // escrow_balance
         4 +  // votes_count
+        2 +  // golden_answer (Option<u8>)
+        1 +  // settled
         1;   // bump
 }
 
@@ -249,6 +261,9 @@ pub struct Commitment {
     /// Whether commitment has been revealed
     pub revealed: bool,
 
+    /// Revealed vote (0 or 1), None until revealed
+    pub vote: Option<u8>,
+
     /// Bump seed for PDA derivation
     pub bump: u8,
 }
@@ -268,6 +283,7 @@ impl Commitment {
         8 +   // stake_amount
         8 +   // timestamp
         1 +   // revealed
+        2 +   // vote (Option<u8>)
         1     // bump
     }
 

@@ -80,8 +80,9 @@ pub mod moltrank {
         pair_id: u32,
         is_golden: bool,
         is_audit: bool,
+        golden_answer: Option<u8>,
     ) -> Result<()> {
-        instructions::init_pair::handler(ctx, round_id, pair_id, is_golden, is_audit)
+        instructions::init_pair::handler(ctx, round_id, pair_id, is_golden, is_audit, golden_answer)
     }
 
     /// Commit a vote with encrypted reveal
@@ -122,5 +123,16 @@ pub mod moltrank {
         decrypted_payload: Vec<u8>,
     ) -> Result<()> {
         instructions::manual_reveal::handler(ctx, pair_id, decrypted_payload)
+    }
+
+    /// Settle a pair and distribute payouts after reveal period ends
+    /// Implements asymmetric payouts based on majority/minority votes
+    pub fn settle_pair<'info>(
+        ctx: Context<'_, '_, '_, 'info, SettlePair<'info>>,
+        pair_id: u32,
+        round_id: u64,
+    ) -> Result<()> {
+        let commitment_accounts = ctx.remaining_accounts.to_vec();
+        instructions::settle_pair::handler(ctx, pair_id, round_id, commitment_accounts)
     }
 }

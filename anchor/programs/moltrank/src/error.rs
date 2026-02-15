@@ -61,4 +61,22 @@ pub enum MoltRankError {
 
     #[msg("Cannot reveal during commit phase")]
     RevealNotYetAllowed,
+
+    #[msg("Invalid reveal payload format")]
+    InvalidRevealPayload,
+
+    #[msg("Vote value must be 0 or 1")]
+    InvalidVoteValue,
+
+    #[msg("Pair has already been settled")]
+    PairAlreadySettled,
+
+    #[msg("Cannot settle pair during commit or reveal phases")]
+    CannotSettleDuringVoting,
+
+    #[msg("Commitment not revealed yet")]
+    CommitmentNotRevealed,
+
+    #[msg("Arithmetic overflow in settlement calculations")]
+    SettlementArithmeticOverflow,
 }

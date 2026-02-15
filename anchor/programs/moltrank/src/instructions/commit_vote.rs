@@ -99,6 +99,7 @@ pub fn handler(
     commitment.stake_amount = stake_amount;
     commitment.timestamp = clock.unix_timestamp;
     commitment.revealed = false;
+    commitment.vote = None;
     commitment.bump = ctx.bumps.commitment;
 
     // Transfer stake to pair escrow

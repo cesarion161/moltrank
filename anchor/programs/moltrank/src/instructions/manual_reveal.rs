@@ -59,13 +59,26 @@ pub fn handler(
         MoltRankError::HashMismatch
     );
 
-    // Mark as revealed
+    // Extract vote from payload (first byte)
+    require!(
+        !decrypted_payload.is_empty(),
+        MoltRankError::InvalidRevealPayload
+    );
+    let vote = decrypted_payload[0];
+    require!(
+        vote == 0 || vote == 1,
+        MoltRankError::InvalidVoteValue
+    );
+
+    // Mark as revealed and store vote
     commitment.revealed = true;
+    commitment.vote = Some(vote);
 
     msg!(
-        "Manual reveal successful: curator={}, pair={}",
+        "Manual reveal successful: curator={}, pair={}, vote={}",
         commitment.curator_wallet,
-        commitment.pair_id
+        commitment.pair_id,
+        vote
     );
 
     Ok(())
