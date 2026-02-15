@@ -1,0 +1,265 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { ApiClient } from './api-client'
+
+describe('ApiClient', () => {
+  let client: ApiClient
+  const mockFetch = vi.fn()
+
+  beforeEach(() => {
+    client = new ApiClient('http://localhost:8080/api')
+    globalThis.fetch = mockFetch
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  describe('request basics', () => {
+    it('sends GET request with correct URL and headers', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ data: 'test' }),
+      })
+
+      await client.get('/test-endpoint')
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/test-endpoint',
+        expect.objectContaining({
+          method: 'GET',
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json',
+          }),
+        })
+      )
+    })
+
+    it('sends POST request with JSON body', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ id: 1 }),
+      })
+
+      await client.post('/items', { name: 'test' })
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/items',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ name: 'test' }),
+        })
+      )
+    })
+
+    it('sends PUT request with JSON body', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ id: 1 }),
+      })
+
+      await client.put('/items/1', { name: 'updated' })
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/items/1',
+        expect.objectContaining({
+          method: 'PUT',
+          body: JSON.stringify({ name: 'updated' }),
+        })
+      )
+    })
+
+    it('sends DELETE request', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({}),
+      })
+
+      await client.delete('/items/1')
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/items/1',
+        expect.objectContaining({ method: 'DELETE' })
+      )
+    })
+  })
+
+  describe('error handling', () => {
+    it('throws on non-OK response with status details', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        text: () => Promise.resolve('Resource not found'),
+      })
+
+      await expect(client.get('/missing')).rejects.toThrow(
+        'API request failed: 404 Not Found'
+      )
+    })
+
+    it('logs error details on non-OK response', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+        text: () => Promise.resolve('Server error body'),
+      })
+
+      await expect(client.get('/broken')).rejects.toThrow()
+
+      expect(console.error).toHaveBeenCalledWith(
+        'API request failed:',
+        expect.objectContaining({
+          url: 'http://localhost:8080/api/broken',
+          status: 500,
+          body: 'Server error body',
+        })
+      )
+    })
+
+    it('throws network error on fetch failure', async () => {
+      mockFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+
+      await expect(client.get('/endpoint')).rejects.toThrow(
+        'Network error: Failed to fetch'
+      )
+    })
+
+    it('handles error body read failure gracefully', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 502,
+        statusText: 'Bad Gateway',
+        text: () => Promise.reject(new Error('stream error')),
+      })
+
+      await expect(client.get('/proxy')).rejects.toThrow(
+        'API request failed: 502 Bad Gateway'
+      )
+
+      expect(console.error).toHaveBeenCalledWith(
+        'API request failed:',
+        expect.objectContaining({
+          body: 'Unable to read error response',
+        })
+      )
+    })
+  })
+
+  describe('curator endpoints', () => {
+    it('getCuratorProfile fetches correct endpoint with default marketId', async () => {
+      const mockProfile = {
+        wallet: 'abc123',
+        earned: 1000,
+        lost: 200,
+        curatorScore: '0.85',
+      }
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockProfile),
+      })
+
+      const result = await client.getCuratorProfile('abc123')
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/curators/abc123?marketId=1',
+        expect.any(Object)
+      )
+      expect(result).toEqual(mockProfile)
+    })
+
+    it('getCuratorProfile uses custom marketId', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({}),
+      })
+
+      await client.getCuratorProfile('wallet1', 5)
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/curators/wallet1?marketId=5',
+        expect.any(Object)
+      )
+    })
+
+    it('getCuratorStats is an alias for getCuratorProfile', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ wallet: 'test' }),
+      })
+
+      const result = await client.getCuratorStats('test')
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/curators/test?marketId=1',
+        expect.any(Object)
+      )
+      expect(result).toEqual({ wallet: 'test' })
+    })
+
+    it('getCuratorEvaluations returns empty array (not yet implemented)', async () => {
+      const result = await client.getCuratorEvaluations('wallet1')
+
+      expect(result).toEqual([])
+      expect(console.warn).toHaveBeenCalledWith(
+        'getCuratorEvaluations: endpoint not yet implemented'
+      )
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('getLeaderboard fetches correct endpoint', async () => {
+      const mockLeaderboard = [
+        { wallet: 'a', curatorScore: 0.9 },
+        { wallet: 'b', curatorScore: 0.8 },
+      ]
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockLeaderboard),
+      })
+
+      const result = await client.getLeaderboard(2, 25)
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/leaderboard?marketId=2&limit=25',
+        expect.any(Object)
+      )
+      expect(result).toEqual(mockLeaderboard)
+    })
+
+    it('getLeaderboard uses default params', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve([]),
+      })
+
+      await client.getLeaderboard()
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/leaderboard?marketId=1&limit=50',
+        expect.any(Object)
+      )
+    })
+  })
+
+  describe('constructor', () => {
+    it('uses provided base URL', () => {
+      const customClient = new ApiClient('https://custom.api/v2')
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({}),
+      })
+
+      customClient.get('/test')
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://custom.api/v2/test',
+        expect.any(Object)
+      )
+    })
+  })
+})
