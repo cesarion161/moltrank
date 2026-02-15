@@ -55,10 +55,45 @@ public class RoundOrchestratorService {
     }
 
     /**
+     * Scheduled task: check all markets and create rounds when conditions are met.
+     * A round is created when:
+     * - The market has sufficient subscribers (>= minCurators)
+     * - There are enough posts to generate at least one pair
+     * - No active (non-SETTLED) round already exists for the market
+     */
+    @Scheduled(fixedRate = 60000) // Run every 60 seconds
+    @Transactional
+    public void checkAndCreateRounds() {
+        log.debug("Checking markets for automated round creation");
+
+        List<Market> markets = marketRepository.findAll();
+        for (Market market : markets) {
+            // Skip markets that already have an active round
+            List<Round> activeRounds = roundRepository.findByMarketIdAndStatusIn(
+                    market.getId(),
+                    List.of(RoundStatus.OPEN, RoundStatus.COMMIT, RoundStatus.REVEAL, RoundStatus.SETTLING));
+            if (!activeRounds.isEmpty()) {
+                log.debug("Market {} already has active round(s), skipping", market.getName());
+                continue;
+            }
+
+            // Attempt round creation (method handles subscriber/post checks internally)
+            try {
+                Round created = createNewRound(market);
+                if (created != null) {
+                    log.info("Automatically created round {} for market {}", created.getId(), market.getName());
+                }
+            } catch (Exception e) {
+                log.error("Failed to auto-create round for market {}", market.getName(), e);
+            }
+        }
+    }
+
+    /**
      * Scheduled task: process state transitions every minute.
      * Checks all active rounds and transitions them based on deadlines.
      */
-    @Scheduled(fixedRate = 60000) // Run every 60 seconds
+    @Scheduled(fixedRate = 60000, initialDelay = 30000) // Run every 60 seconds, offset from round creation
     @Transactional
     public void processRoundTransitions() {
         log.debug("Processing round state transitions");
@@ -103,8 +138,10 @@ public class RoundOrchestratorService {
     public Round createNewRound(Market market) {
         log.info("Creating new round for market: {}", market.getName());
 
-        // Check for existing active rounds
-        List<Round> activeRounds = roundRepository.findByMarketIdAndStatus(market.getId(), RoundStatus.OPEN);
+        // Check for existing active rounds (any non-SETTLED status)
+        List<Round> activeRounds = roundRepository.findByMarketIdAndStatusIn(
+                market.getId(),
+                List.of(RoundStatus.OPEN, RoundStatus.COMMIT, RoundStatus.REVEAL, RoundStatus.SETTLING));
         if (!activeRounds.isEmpty()) {
             log.warn("Market {} already has active rounds, skipping creation", market.getName());
             return null;

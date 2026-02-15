@@ -14,4 +14,5 @@ public interface RoundRepository extends JpaRepository<Round, Integer> {
     List<Round> findByMarketId(Integer marketId, Sort sort);
     List<Round> findByStatus(RoundStatus status);
     List<Round> findByMarketIdAndStatus(Integer marketId, RoundStatus status);
+    List<Round> findByMarketIdAndStatusIn(Integer marketId, List<RoundStatus> statuses);
 }
