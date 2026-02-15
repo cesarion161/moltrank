@@ -3,26 +3,31 @@
 import { useWallet } from '@solana/wallet-adapter-react'
 import { signIn, useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
+import { VerifiedBadge } from '@/components/verified-badge'
+import { useIdentity } from '@/hooks/use-identity'
 import { useEffect, useState } from 'react'
 
 export function LinkTwitter() {
   const { publicKey } = useWallet()
-  const { data: session, status } = useSession()
+  const { data: session } = useSession()
+  const { hasTwitterLinked, twitterUsername, isLoading: identityLoading, reload } = useIdentity()
   const [isLinking, setIsLinking] = useState(false)
-  const [linkedTwitter, setLinkedTwitter] = useState<string | null>(null)
+  const [linkError, setLinkError] = useState<string | null>(null)
 
   useEffect(() => {
-    // If user just authenticated with Twitter, link the identity
-    if (session?.user?.account && publicKey && !linkedTwitter) {
+    // If user just authenticated with Twitter and wallet is connected,
+    // auto-link the identity
+    if (session?.user?.account && publicKey && !hasTwitterLinked && !isLinking) {
       linkIdentity()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, publicKey, linkedTwitter])
+  }, [session, publicKey, hasTwitterLinked])
 
   const linkIdentity = async () => {
     if (!publicKey || !session?.user?.account) return
 
     setIsLinking(true)
+    setLinkError(null)
     try {
       const response = await fetch('/api/identity/link', {
         method: 'POST',
@@ -37,13 +42,15 @@ export function LinkTwitter() {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to link identity')
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to link identity')
       }
 
-      setLinkedTwitter(session.user.account.username)
+      // Reload user identity to reflect the linked state
+      await reload()
     } catch (error) {
       console.error('Error linking identity:', error)
-      alert('Failed to link X account. Please try again.')
+      setLinkError(error instanceof Error ? error.message : 'Failed to link X account')
     } finally {
       setIsLinking(false)
     }
@@ -51,9 +58,10 @@ export function LinkTwitter() {
 
   const handleLinkClick = () => {
     if (!publicKey) {
-      alert('Please connect your wallet first')
+      setLinkError('Please connect your wallet first')
       return
     }
+    setLinkError(null)
     signIn('twitter')
   }
 
@@ -61,14 +69,14 @@ export function LinkTwitter() {
     return null
   }
 
-  if (linkedTwitter) {
+  if (identityLoading) {
     return (
-      <div className="flex items-center gap-2 text-sm">
-        <span className="text-muted-foreground">X Account:</span>
-        <span className="font-medium">@{linkedTwitter}</span>
-        <span className="text-green-500">✓</span>
-      </div>
+      <div className="h-9 w-24 animate-pulse rounded-md bg-secondary" />
     )
+  }
+
+  if (hasTwitterLinked && twitterUsername) {
+    return <VerifiedBadge twitterUsername={twitterUsername} />
   }
 
   if (isLinking) {
@@ -80,8 +88,15 @@ export function LinkTwitter() {
   }
 
   return (
-    <Button variant="outline" size="sm" onClick={handleLinkClick}>
-      Link X Account
-    </Button>
+    <div className="flex items-center gap-2">
+      <Button variant="outline" size="sm" onClick={handleLinkClick}>
+        Link X Account
+      </Button>
+      {linkError && (
+        <span className="text-xs text-destructive max-w-[200px] truncate" title={linkError}>
+          {linkError}
+        </span>
+      )}
+    </div>
   )
 }

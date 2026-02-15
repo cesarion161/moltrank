@@ -30,8 +30,37 @@ vi.mock('@/lib/api-client', () => ({
   },
 }))
 
+// Mock useIdentity hook
+const mockUseIdentity = vi.fn()
+vi.mock('@/hooks/use-identity', () => ({
+  useIdentity: () => mockUseIdentity(),
+}))
+
+// Mock VerifiedBadge
+vi.mock('@/components/verified-badge', () => ({
+  VerifiedBadge: ({ twitterUsername }: { twitterUsername: string }) => (
+    <span data-testid="verified-badge">@{twitterUsername}</span>
+  ),
+}))
+
+const MOCK_WALLET = '4Nd1mYQzvgV8Vr3Z3nYb7pD6T8K9jF2eqWxY1S3Qh5Ro'
+
+const defaultIdentity = {
+  walletAddress: MOCK_WALLET,
+  connected: true,
+  twitterUsername: null,
+  isVerified: false,
+  publicKey: { toBase58: () => MOCK_WALLET },
+  user: null,
+  isLoading: false,
+  error: null,
+  hasTwitterLinked: false,
+  session: null,
+  reload: vi.fn(),
+}
+
 const mockStatsResponse = {
-  wallet: '4Nd1mYQzvgV8Vr3Z3nYb7pD6T8K9jF2eqWxY1S3Qh5Ro',
+  wallet: MOCK_WALLET,
   earned: 5000,
   lost: 1200,
   curatorScore: '0.8250',
@@ -64,10 +93,25 @@ describe('DashboardPage', () => {
   beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(console, 'warn').mockImplementation(() => {})
+    mockUseIdentity.mockReturnValue(defaultIdentity)
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  it('shows connect wallet prompt when not connected', () => {
+    mockUseIdentity.mockReturnValue({
+      ...defaultIdentity,
+      walletAddress: null,
+      connected: false,
+      publicKey: null,
+    })
+
+    render(<DashboardPage />)
+
+    expect(screen.getByText('Connect your wallet')).toBeInTheDocument()
+    expect(screen.getByText(/Connect a Solana wallet/)).toBeInTheDocument()
   })
 
   it('shows loading state initially', () => {
@@ -239,20 +283,34 @@ describe('DashboardPage', () => {
     expect(fraudFlagElement).toBeDefined()
   })
 
-  it('calls API with correct wallet address', async () => {
+  it('calls API with connected wallet address', async () => {
     mockGetCuratorStats.mockResolvedValue(mockStatsResponse)
     mockGetCuratorEvaluations.mockResolvedValue([])
 
     render(<DashboardPage />)
 
     await waitFor(() => {
-      expect(mockGetCuratorStats).toHaveBeenCalledWith(
-        '4Nd1mYQzvgV8Vr3Z3nYb7pD6T8K9jF2eqWxY1S3Qh5Ro'
-      )
-      expect(mockGetCuratorEvaluations).toHaveBeenCalledWith(
-        '4Nd1mYQzvgV8Vr3Z3nYb7pD6T8K9jF2eqWxY1S3Qh5Ro',
-        10
-      )
+      expect(mockGetCuratorStats).toHaveBeenCalledWith(MOCK_WALLET)
+      expect(mockGetCuratorEvaluations).toHaveBeenCalledWith(MOCK_WALLET, 10)
     })
+  })
+
+  it('shows verified badge when identity is verified', async () => {
+    mockUseIdentity.mockReturnValue({
+      ...defaultIdentity,
+      twitterUsername: 'testuser',
+      isVerified: true,
+      hasTwitterLinked: true,
+    })
+    mockGetCuratorStats.mockResolvedValue(mockStatsResponse)
+    mockGetCuratorEvaluations.mockResolvedValue([])
+
+    render(<DashboardPage />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('verified-badge')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('@testuser')).toBeInTheDocument()
   })
 })

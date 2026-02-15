@@ -18,22 +18,27 @@ import {
 } from 'recharts'
 import { apiClient } from '@/lib/api-client'
 import { CuratorStats, CuratorEvaluation } from '@/lib/types'
+import { useIdentity } from '@/hooks/use-identity'
+import { VerifiedBadge } from '@/components/verified-badge'
 
 export default function DashboardPage() {
+  const { walletAddress, connected, twitterUsername, isVerified } = useIdentity()
   const [stats, setStats] = useState<CuratorStats | null>(null)
   const [evaluations, setEvaluations] = useState<CuratorEvaluation[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // For demo purposes, using a mock wallet
-  const currentWallet = '4Nd1mYQzvgV8Vr3Z3nYb7pD6T8K9jF2eqWxY1S3Qh5Ro'
-
   useEffect(() => {
+    if (!walletAddress) {
+      setLoading(false)
+      return
+    }
+
     async function fetchDashboardData() {
       try {
         const [statsData, evalsData] = await Promise.all([
-          apiClient.getCuratorStats(currentWallet),
-          apiClient.getCuratorEvaluations(currentWallet, 10),
+          apiClient.getCuratorStats(walletAddress!),
+          apiClient.getCuratorEvaluations(walletAddress!, 10),
         ])
 
         // Transform backend response to frontend format
@@ -60,7 +65,7 @@ export default function DashboardPage() {
     }
 
     fetchDashboardData()
-  }, [])
+  }, [walletAddress])
 
   if (loading) {
     return (
@@ -79,6 +84,19 @@ export default function DashboardPage() {
         <div className="text-center">
           <p className="text-red-500 mb-2">Error loading dashboard</p>
           <p className="text-sm text-muted-foreground">{error}</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!connected || !walletAddress) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <p className="text-lg font-medium mb-2">Connect your wallet</p>
+          <p className="text-sm text-muted-foreground">
+            Connect a Solana wallet to view your curator dashboard.
+          </p>
         </div>
       </div>
     )
@@ -119,7 +137,12 @@ export default function DashboardPage() {
     <div className="space-y-8">
       {/* Header */}
       <div className="space-y-2">
-        <h1 className="text-4xl font-bold">Curator Dashboard</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-4xl font-bold">Curator Dashboard</h1>
+          {isVerified && twitterUsername && (
+            <VerifiedBadge twitterUsername={twitterUsername} />
+          )}
+        </div>
         <p className="text-muted-foreground">
           Track your curation performance and earnings
         </p>
