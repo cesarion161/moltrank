@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::keccak;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
-use crate::state::{GlobalPool, Round, Pair, Commitment, Identity, Market};
+use crate::state::{GlobalPool, Round, Pair, Commitment};
 use crate::error::MoltRankError;
 
 #[derive(Accounts)]

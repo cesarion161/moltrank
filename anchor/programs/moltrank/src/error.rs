@@ -44,6 +44,9 @@ pub enum MoltRankError {
     #[msg("Commitment already exists for this pair and curator")]
     CommitmentAlreadyExists,
 
+    #[msg("Rate limit exceeded: maximum 20 pairs per identity per round")]
+    RateLimitExceeded,
+
     #[msg("Commitment not found or invalid")]
     InvalidCommitment,
 

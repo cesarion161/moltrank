@@ -290,3 +290,31 @@ impl Commitment {
     /// Maximum stake per identity per pair (500 tokens with 9 decimals)
     pub const MAX_STAKE_PER_PAIR: u64 = 500_000_000_000;
 }
+
+/// Per-identity per-round vote tally for rate limiting
+/// PDA seeds: [b"tally", round_id (u64 as bytes), curator_wallet]
+#[account]
+pub struct CuratorRoundTally {
+    /// Round ID this tally is for
+    pub round_id: u64,
+
+    /// Curator's wallet
+    pub curator_wallet: Pubkey,
+
+    /// Number of pairs voted on in this round
+    pub vote_count: u32,
+
+    /// Bump seed for PDA derivation
+    pub bump: u8,
+}
+
+impl CuratorRoundTally {
+    pub const LEN: usize = 8 +  // discriminator
+        8 +  // round_id
+        32 + // curator_wallet
+        4 +  // vote_count
+        1;   // bump
+
+    /// Maximum pairs per identity per round
+    pub const MAX_PAIRS_PER_ROUND: u32 = 20;
+}

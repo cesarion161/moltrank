@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
-use crate::state::{Round, Pair, Commitment, Identity};
+use crate::state::{Round, Pair, Commitment, Identity, CuratorRoundTally};
 use crate::error::MoltRankError;
 
 #[derive(Accounts)]
@@ -13,26 +13,36 @@ pub struct CommitVote<'info> {
         seeds = [b"commitment", pair_id.to_le_bytes().as_ref(), curator.key().as_ref()],
         bump
     )]
-    pub commitment: Account<'info, Commitment>,
+    pub commitment: Box<Account<'info, Commitment>>,
 
     #[account(
         mut,
         seeds = [b"pair", round_id.to_le_bytes().as_ref(), pair_id.to_le_bytes().as_ref()],
         bump = pair.bump
     )]
-    pub pair: Account<'info, Pair>,
+    pub pair: Box<Account<'info, Pair>>,
 
     #[account(
         seeds = [b"round", round_id.to_le_bytes().as_ref()],
         bump = round.bump
     )]
-    pub round: Account<'info, Round>,
+    pub round: Box<Account<'info, Round>>,
 
     #[account(
         seeds = [b"identity", curator.key().as_ref()],
         bump = identity.bump
     )]
-    pub identity: Account<'info, Identity>,
+    pub identity: Box<Account<'info, Identity>>,
+
+    /// Per-round vote tally for rate limiting (init_if_needed for first vote in round)
+    #[account(
+        init_if_needed,
+        payer = curator,
+        space = CuratorRoundTally::LEN,
+        seeds = [b"tally", round_id.to_le_bytes().as_ref(), curator.key().as_ref()],
+        bump
+    )]
+    pub tally: Box<Account<'info, CuratorRoundTally>>,
 
     /// Pair escrow token account (must be initialized beforehand)
     #[account(
@@ -42,11 +52,11 @@ pub struct CommitVote<'info> {
         token::mint = token_mint,
         token::authority = pair_escrow
     )]
-    pub pair_escrow: Account<'info, TokenAccount>,
+    pub pair_escrow: Box<Account<'info, TokenAccount>>,
 
     /// Curator's token account
     #[account(mut)]
-    pub curator_token_account: Account<'info, TokenAccount>,
+    pub curator_token_account: Box<Account<'info, TokenAccount>>,
 
     /// Token mint (SURGE token)
     pub token_mint: Account<'info, token::Mint>,
@@ -70,6 +80,7 @@ pub fn handler(
     let commitment = &mut ctx.accounts.commitment;
     let pair = &mut ctx.accounts.pair;
     let round = &ctx.accounts.round;
+    let tally = &mut ctx.accounts.tally;
     let clock = Clock::get()?;
 
     // Validation: Check we're in commit phase
@@ -88,6 +99,12 @@ pub fn handler(
     require!(
         encrypted_reveal.len() <= Commitment::MAX_ENCRYPTED_SIZE,
         MoltRankError::EncryptedPayloadTooLarge
+    );
+
+    // Validation: Check per-epoch rate limit (20 pairs per identity per round)
+    require!(
+        tally.vote_count < CuratorRoundTally::MAX_PAIRS_PER_ROUND,
+        MoltRankError::RateLimitExceeded
     );
 
     // Store commitment
@@ -112,6 +129,17 @@ pub fn handler(
     let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
     token::transfer(cpi_ctx, stake_amount)?;
 
+    // Update rate limit tally
+    if tally.vote_count == 0 {
+        tally.round_id = round_id;
+        tally.curator_wallet = ctx.accounts.curator.key();
+        tally.bump = ctx.bumps.tally;
+    }
+    tally.vote_count = tally
+        .vote_count
+        .checked_add(1)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+
     // Update pair state
     pair.escrow_balance = pair
         .escrow_balance
@@ -123,10 +151,12 @@ pub fn handler(
         .ok_or(ProgramError::ArithmeticOverflow)?;
 
     msg!(
-        "Vote committed: pair={}, curator={}, stake={}",
+        "Vote committed: pair={}, curator={}, stake={}, round_votes={}/{}",
         pair_id,
         ctx.accounts.curator.key(),
-        stake_amount
+        stake_amount,
+        tally.vote_count,
+        CuratorRoundTally::MAX_PAIRS_PER_ROUND
     );
 
     Ok(())
