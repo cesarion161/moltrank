@@ -1,0 +1,248 @@
+/**
+ * Test voting instructions on devnet
+ * Tests: create_pair, commit_vote, reveal_vote, settle_pair
+ */
+
+import * as anchor from "@coral-xyz/anchor";
+import { Program } from "@coral-xyz/anchor";
+import { PublicKey, Keypair, SystemProgram } from "@solana/web3.js";
+import { keccak_256 } from "@noble/hashes/sha3";
+
+// Program ID on devnet
+const PROGRAM_ID = new PublicKey("ChLerptVUKPq814C4L4DHroiYBGJHHWCTRxbkGCa9non");
+
+async function main() {
+  // Connect to devnet
+  const connection = new anchor.web3.Connection(
+    "https://api.devnet.solana.com",
+    "confirmed"
+  );
+
+  // Load wallet
+  const wallet = anchor.Wallet.local();
+  const provider = new anchor.AnchorProvider(connection, wallet, {
+    commitment: "confirmed",
+  });
+  anchor.setProvider(provider);
+
+  console.log("🔗 Connected to devnet");
+  console.log("👛 Wallet:", wallet.publicKey.toBase58());
+  console.log("📝 Program:", PROGRAM_ID.toBase58());
+
+  // Load the program
+  const idl = JSON.parse(
+    require("fs").readFileSync("target/idl/moltrank.json", "utf8")
+  );
+  const program = new Program(idl, provider);
+
+  console.log("\n=== Testing Voting Instructions ===\n");
+
+  // Generate test IDs
+  const marketId = Buffer.from("test_market_" + Date.now());
+  const pairId = Buffer.from("test_pair_" + Date.now());
+
+  // Create fake post public keys (just for testing)
+  const postA = Keypair.generate().publicKey;
+  const postB = Keypair.generate().publicKey;
+
+  // Set deadlines (30 seconds from now for commit, 60 seconds for reveal)
+  const now = Math.floor(Date.now() / 1000);
+  const commitDeadline = new anchor.BN(now + 30);
+  const revealDeadline = new anchor.BN(now + 60);
+
+  // Derive PDAs
+  const [globalPool] = PublicKey.findProgramAddressSync(
+    [Buffer.from("global_pool")],
+    program.programId
+  );
+
+  const [market] = PublicKey.findProgramAddressSync(
+    [Buffer.from("market"), marketId],
+    program.programId
+  );
+
+  const [pair] = PublicKey.findProgramAddressSync(
+    [Buffer.from("pair"), pairId],
+    program.programId
+  );
+
+  const [vote] = PublicKey.findProgramAddressSync(
+    [Buffer.from("vote"), pairId, wallet.publicKey.toBuffer()],
+    program.programId
+  );
+
+  try {
+    // 1. Check if global pool exists, if not initialize it
+    console.log("1️⃣  Checking global pool...");
+    try {
+      const poolData = await program.account.globalPool.fetch(globalPool);
+      console.log("   ✅ Global pool exists");
+      console.log("   Balance:", poolData.balance.toString());
+    } catch (e) {
+      console.log("   ⚠️  Global pool not found, initializing...");
+      const tx = await program.methods
+        .initGlobalPool()
+        .accounts({
+          globalPool,
+          authority: wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+      console.log("   ✅ Global pool initialized:", tx);
+    }
+
+    // 2. Create market
+    console.log("\n2️⃣  Creating test market...");
+    try {
+      const tx = await program.methods
+        .createMarket(
+          Array.from(marketId),
+          "Test Market",
+          1,
+          new anchor.BN(1000000)
+        )
+        .accounts({
+          market,
+          globalPool,
+          authority: wallet.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+      console.log("   ✅ Market created:", tx);
+    } catch (e: any) {
+      if (e.message?.includes("already in use")) {
+        console.log("   ℹ️  Market already exists, continuing...");
+      } else {
+        throw e;
+      }
+    }
+
+    // 3. Create voting pair
+    console.log("\n3️⃣  Creating voting pair...");
+    console.log("   Post A:", postA.toBase58());
+    console.log("   Post B:", postB.toBase58());
+    console.log("   Commit deadline:", new Date(commitDeadline.toNumber() * 1000).toISOString());
+    console.log("   Reveal deadline:", new Date(revealDeadline.toNumber() * 1000).toISOString());
+
+    const createPairTx = await program.methods
+      .createPair(
+        Array.from(pairId),
+        Array.from(marketId),
+        postA,
+        postB,
+        commitDeadline,
+        revealDeadline,
+        false, // not golden
+        null
+      )
+      .accounts({
+        pair,
+        market,
+        globalPool,
+        authority: wallet.publicKey,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+    console.log("   ✅ Pair created:", createPairTx);
+
+    // 4. Commit a vote
+    console.log("\n4️⃣  Committing vote...");
+
+    // Generate commitment
+    const choice = 0; // Vote for Post A
+    const salt = Keypair.generate().publicKey.toBuffer(); // Random 32 bytes
+    const commitmentData = Buffer.concat([Buffer.from([choice]), salt]);
+    const commitmentHash = Buffer.from(keccak_256(commitmentData));
+
+    console.log("   Choice:", choice, "(Post A)");
+    console.log("   Salt:", salt.toString('hex').slice(0, 16) + "...");
+    console.log("   Commitment hash:", commitmentHash.toString('hex').slice(0, 16) + "...");
+
+    const stake = new anchor.BN(100000); // 0.0001 SOL
+
+    const commitTx = await program.methods
+      .commitVote(
+        Array.from(pairId),
+        Array.from(commitmentHash),
+        stake
+      )
+      .accounts({
+        vote,
+        pair,
+        globalPool,
+        curator: wallet.publicKey,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+    console.log("   ✅ Vote committed:", commitTx);
+
+    // 5. Wait for commit deadline to pass
+    console.log("\n⏰ Waiting for commit deadline to pass (30 seconds)...");
+    await new Promise(resolve => setTimeout(resolve, 31000));
+
+    // 6. Reveal the vote
+    console.log("\n5️⃣  Revealing vote...");
+
+    const revealTx = await program.methods
+      .revealVote(
+        Array.from(pairId),
+        choice,
+        Array.from(salt)
+      )
+      .accounts({
+        vote,
+        pair,
+        curator: wallet.publicKey,
+      })
+      .rpc();
+    console.log("   ✅ Vote revealed:", revealTx);
+
+    // Fetch vote data to verify
+    const voteData = await program.account.vote.fetch(vote);
+    console.log("   Revealed choice:", voteData.revealedChoice);
+
+    // 7. Wait for reveal deadline to pass
+    console.log("\n⏰ Waiting for reveal deadline to pass (30 more seconds)...");
+    await new Promise(resolve => setTimeout(resolve, 31000));
+
+    // 8. Settle the pair
+    console.log("\n6️⃣  Settling pair...");
+
+    const settleTx = await program.methods
+      .settlePair(Array.from(pairId))
+      .accounts({
+        pair,
+        globalPool,
+        authority: wallet.publicKey,
+      })
+      .rpc();
+    console.log("   ✅ Pair settled:", settleTx);
+
+    // Fetch final pair data
+    const pairData = await program.account.pair.fetch(pair);
+    console.log("\n📊 Final Results:");
+    console.log("   Total votes:", pairData.totalVotes);
+    console.log("   Votes for A:", pairData.votesA);
+    console.log("   Votes for B:", pairData.votesB);
+    console.log("   Winner:", pairData.winner === 0 ? "Post A" : pairData.winner === 1 ? "Post B" : "Tie");
+    console.log("   Settled:", pairData.settled);
+
+    console.log("\n✅ ALL TESTS PASSED! 🎉");
+
+  } catch (error: any) {
+    console.error("\n❌ Test failed:");
+    console.error(error);
+    if (error.logs) {
+      console.error("\nProgram logs:");
+      error.logs.forEach((log: string) => console.error(log));
+    }
+    process.exit(1);
+  }
+}
+
+main()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
