@@ -1,6 +1,9 @@
 package com.moltrank.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
@@ -20,6 +23,7 @@ public class GoldenSetItem {
     private Post postB;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(name = "correct_answer", nullable = false, columnDefinition = "pair_winner")
     private PairWinner correctAnswer;
 

@@ -1,6 +1,9 @@
 package com.moltrank.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import java.time.OffsetDateTime;
 
 @Entity
@@ -15,6 +18,7 @@ public class Round {
     private Market market;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(nullable = false, columnDefinition = "round_status")
     private RoundStatus status = RoundStatus.OPEN;
 

@@ -1,6 +1,9 @@
 package com.moltrank.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import java.time.OffsetDateTime;
 
 @Entity
@@ -21,6 +24,7 @@ public class Subscription {
     private Long amount;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(nullable = false, columnDefinition = "subscription_type")
     private SubscriptionType type;
 

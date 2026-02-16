@@ -14,16 +14,18 @@ export async function POST(request: NextRequest) {
 
     // Call backend to register identity linkage
     const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api'
+    const backendPayload = {
+      wallet: walletAddress,
+      xAccount: twitterUsername,
+      verified: true,
+    }
+
     const response = await fetch(`${backendUrl}/identity/link`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        walletAddress,
-        twitterUsername,
-        twitterId,
-      }),
+      body: JSON.stringify(backendPayload),
     })
 
     if (!response.ok) {

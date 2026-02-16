@@ -85,9 +85,9 @@ describe('POST /api/identity/link', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          walletAddress: '4Nd1mYQzvgV8Vr3Z3nYb7pD6T8K9jF2eqWxY1S3Qh5Ro',
-          twitterUsername: 'testuser',
-          twitterId: '123456',
+          wallet: '4Nd1mYQzvgV8Vr3Z3nYb7pD6T8K9jF2eqWxY1S3Qh5Ro',
+          xAccount: 'testuser',
+          verified: true,
         }),
       }
     )

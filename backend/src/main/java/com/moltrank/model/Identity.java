@@ -1,5 +1,7 @@
 package com.moltrank.model;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import java.time.OffsetDateTime;
 
@@ -41,10 +43,13 @@ public class Identity {
         this.wallet = wallet;
     }
 
+    @JsonProperty("xAccount")
     public String getXAccount() {
         return xAccount;
     }
 
+    @JsonProperty("xAccount")
+    @JsonAlias({"xaccount"})
     public void setXAccount(String xAccount) {
         this.xAccount = xAccount;
     }

@@ -12,6 +12,7 @@ Round execution flow:
 """
 
 import random
+from itertools import islice
 from typing import List, Tuple, Dict, Optional
 from dataclasses import dataclass
 
@@ -164,15 +165,15 @@ class SimulationEngine:
         num_audit = int(len(pairs) * self.config.audit_pair_percentage)
         golden_count = int(len(pairs) * self.config.golden_set_percentage)
 
-        available_historical = [
+        # Stop scanning as soon as enough candidates are found.
+        candidate_pairs = (
             p for p in historical_pairs
             if not p.is_golden_set and not p.is_audit_pair
-        ]
+        )
 
-        for i in range(min(num_audit, len(available_historical))):
+        for i, historical_pair in enumerate(islice(candidate_pairs, num_audit)):
             insert_idx = golden_count + i
             if insert_idx < len(pairs):
-                historical_pair = available_historical[i]
                 pairs[insert_idx] = Pair(
                     pair_id=f"audit_{len(self.rounds)}_{i}",
                     post_left=historical_pair.post_left,

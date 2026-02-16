@@ -1,6 +1,9 @@
 package com.moltrank.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import java.time.OffsetDateTime;
 
 @Entity
@@ -23,6 +26,7 @@ public class Pair {
     private Post postB;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(columnDefinition = "pair_winner")
     private PairWinner winner;
 
@@ -39,6 +43,7 @@ public class Pair {
     private Boolean isAudit = false;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(name = "golden_answer", columnDefinition = "pair_winner")
     private PairWinner goldenAnswer;
 

@@ -16,7 +16,7 @@ Reference: PRD Sections 6.4, 8.5
 
 import os
 import sys
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 from collections import defaultdict
 import statistics
 
@@ -29,12 +29,11 @@ from src.scenarios import (
     create_collusion_scenario,
     create_whale_sybil_scenario,
     create_lazy_majority_scenario,
-    create_new_market_scenario,
     create_alpha_sweep_scenario,
     create_minority_loss_sweep_scenario,
 )
-from src.engine import SimulationEngine, SimulationConfig
-from src.models import Curator, Vote
+from src.engine import SimulationEngine
+from src.models import Curator
 from src.charts import (
     plot_pool_balance,
     plot_cumulative_pnl_by_agent,
@@ -78,6 +77,9 @@ def run_scenario(scenario_config, num_rounds: int = 10000) -> Tuple[SimulationEn
         for post in market.posts:
             engine.add_post(post)
 
+    # Keep a rolling list of non-golden, non-audit pairs for cheap audit injection.
+    historical_pairs: List = []
+
     # Run rounds
     round_results = []
     for round_num in range(num_rounds):
@@ -94,16 +96,30 @@ def run_scenario(scenario_config, num_rounds: int = 10000) -> Tuple[SimulationEn
 
         # Run round with agent strategies
         round_obj, results = run_round_with_strategies(
-            engine, total_subscribers, curator_strategies
+            engine,
+            total_subscribers,
+            curator_strategies,
+            historical_pairs,
         )
 
-        # Track results
-        round_results.append({
+        post_elos = [post.elo_rating for post in engine.posts.values()]
+        elo_stability = statistics.stdev(post_elos) if len(post_elos) > 1 else 0.0
+
+        # Track results for chart generation.
+        round_data = {
             'round': round_num,
             'pool_balance': engine.pool.balance,
+            'elo_stability': elo_stability,
             'results': results,
             'round_obj': round_obj,
-        })
+        }
+        round_results.append(round_data)
+
+        # Add only reusable pairs for future audit injections.
+        historical_pairs.extend(
+            pair for pair in round_obj.pairs
+            if not pair.is_golden_set and not pair.is_audit_pair
+        )
 
         # Progress indicator
         if (round_num + 1) % 1000 == 0:
@@ -116,7 +132,8 @@ def run_scenario(scenario_config, num_rounds: int = 10000) -> Tuple[SimulationEn
 def run_round_with_strategies(
     engine: SimulationEngine,
     num_subscribers: int,
-    curator_strategies: Dict
+    curator_strategies: Dict,
+    historical_pairs: Optional[List] = None,
 ) -> Tuple:
     """Run a round using curator strategies.
 
@@ -124,6 +141,7 @@ def run_round_with_strategies(
         engine: SimulationEngine instance
         num_subscribers: Number of subscribers
         curator_strategies: Dict mapping curator_id to AgentStrategy
+        historical_pairs: Previously seen non-golden/non-audit pairs
 
     Returns:
         Tuple of (Round, results)
@@ -139,11 +157,7 @@ def run_round_with_strategies(
     golden_set_pairs = []  # Could add pre-defined golden set
     engine.inject_golden_set_pairs(pairs, golden_set_pairs)
 
-    historical_pairs = []
-    if engine.rounds:
-        for prev_round in engine.rounds:
-            historical_pairs.extend(prev_round.pairs)
-    engine.inject_audit_pairs(pairs, historical_pairs)
+    engine.inject_audit_pairs(pairs, historical_pairs or [])
 
     # Create round
     from src.models import Round
@@ -199,6 +213,23 @@ def identify_agent_type(curator_id: str, curator_strategies: Dict) -> str:
         return 'other'
 
 
+def scaled_rounds(default_rounds: int) -> int:
+    """Scale round counts via env var for quicker local iteration.
+
+    MOLTRANK_SIM_ROUND_SCALE=1.0 keeps existing behavior.
+    """
+    scale_raw = os.getenv('MOLTRANK_SIM_ROUND_SCALE', '1.0')
+    try:
+        scale = float(scale_raw)
+    except ValueError:
+        scale = 1.0
+
+    if scale <= 0:
+        scale = 1.0
+
+    return max(1, int(default_rounds * scale))
+
+
 def main():
     """Main entry point."""
     print("=" * 60)
@@ -215,7 +246,8 @@ def main():
     # ===================================================================
     print("\n[Chart 1] Running baseline scenario for pool balance...")
     baseline_config = create_baseline_scenario()
-    baseline_engine, baseline_results = run_scenario(baseline_config, num_rounds=10000)
+    baseline_rounds = scaled_rounds(10000)
+    baseline_engine, baseline_results = run_scenario(baseline_config, num_rounds=baseline_rounds)
 
     pool_balances = [r['pool_balance'] for r in baseline_results]
     chart1_data = plot_pool_balance(
@@ -258,7 +290,8 @@ def main():
         curators.append((ring_id, ring, 1000.0))
 
     mixed_config.curators = curators
-    mixed_engine, mixed_results = run_scenario(mixed_config, num_rounds=10000)
+    mixed_rounds = scaled_rounds(10000)
+    mixed_engine, mixed_results = run_scenario(mixed_config, num_rounds=mixed_rounds)
 
     # Calculate cumulative PnL by agent type
     pnl_by_type = defaultdict(lambda: [0.0])
@@ -285,18 +318,16 @@ def main():
         dict(pnl_by_type),
         os.path.join(output_dir, 'chart2_pnl_by_agent.png')
     )
-    all_chart_data['chart_2_pnl_by_agent'] = chart2_data
+    all_chart_data['chart_2_cumulative_pnl'] = chart2_data
     print("✓ Chart 2 complete")
 
     # ===================================================================
     # Chart 3: New market bootstrap curve
     # ===================================================================
-    print("\n[Chart 3] Running new market scenario...")
-    new_market_config = create_new_market_scenario()
-    new_market_engine, new_market_results = run_scenario(new_market_config, num_rounds=10000)
+    print("\n[Chart 3] Building new market bootstrap curve...")
 
     # Extract data from round 3000 onwards (when new market is added)
-    bootstrap_rounds = range(7000)  # 7000 rounds after launch
+    bootstrap_rounds = range(scaled_rounds(7000))  # 7000 rounds after launch
     bootstrap_subscribers = []
     bootstrap_curators = []
 
@@ -315,7 +346,7 @@ def main():
         bootstrap_curators,
         os.path.join(output_dir, 'chart3_market_bootstrap.png')
     )
-    all_chart_data['chart_3_market_bootstrap'] = chart3_data
+    all_chart_data['chart_3_new_market_bootstrap'] = chart3_data
     print("✓ Chart 3 complete")
 
     # ===================================================================
@@ -323,40 +354,30 @@ def main():
     # ===================================================================
     print("\n[Chart 4a] Running alpha sweep...")
     alpha_values = [0.10, 0.20, 0.30, 0.40, 0.50]
-    avg_honest_pnl_alpha = []
-    avg_malicious_pnl_alpha = []
+    pool_balance_by_alpha = []
+    avg_curator_rewards_alpha = []
 
     for alpha in alpha_values:
         print(f"  Testing alpha={alpha}")
         config = create_alpha_sweep_scenario()
         config.simulation_config.alpha = alpha
 
-        engine, results = run_scenario(config, num_rounds=1000)  # Shorter run for sweep
+        engine, results = run_scenario(config, num_rounds=scaled_rounds(1000))  # Shorter run for sweep
 
-        # Calculate average PnL
-        honest_pnl = []
-        malicious_pnl = []
+        pool_balance_by_alpha.append(engine.pool.balance)
 
-        curator_strategies = {}
-        for curator_id, strategy, stake in config.curators:
-            curator_strategies[curator_id] = strategy
-
+        curator_rewards = []
         for r in results:
-            for curator_id, result in r['results'].items():
-                agent_type = identify_agent_type(curator_id, curator_strategies)
-                pnl = result.get('rewards', 0.0)
-                if agent_type == 'honest':
-                    honest_pnl.append(pnl)
-                elif agent_type in ['bot', 'lazy', 'colluder']:
-                    malicious_pnl.append(pnl)
-
-        avg_honest_pnl_alpha.append(statistics.mean(honest_pnl) if honest_pnl else 0.0)
-        avg_malicious_pnl_alpha.append(statistics.mean(malicious_pnl) if malicious_pnl else 0.0)
+            for result in r['results'].values():
+                curator_rewards.append(result.get('rewards', 0.0))
+        avg_curator_rewards_alpha.append(
+            statistics.mean(curator_rewards) if curator_rewards else 0.0
+        )
 
     chart4a_data = plot_alpha_sensitivity(
         alpha_values,
-        avg_honest_pnl_alpha,
-        avg_malicious_pnl_alpha,
+        pool_balance_by_alpha,
+        avg_curator_rewards_alpha,
         os.path.join(output_dir, 'chart4a_alpha_sensitivity.png')
     )
     all_chart_data['chart_4a_alpha_sensitivity'] = chart4a_data
@@ -368,14 +389,14 @@ def main():
     print("\n[Chart 4b] Running minority loss sweep...")
     minority_loss_pcts = [10, 20, 30, 40, 50]
     consensus_alignment = []
-    avg_curator_pnl_loss = []
+    avg_pnl_loss = []
 
     for loss_pct in minority_loss_pcts:
         print(f"  Testing minority loss={loss_pct}%")
         config = create_minority_loss_sweep_scenario()
         config.simulation_config.minority_payout = (100 - loss_pct) / 100.0
 
-        engine, results = run_scenario(config, num_rounds=1000)
+        engine, results = run_scenario(config, num_rounds=scaled_rounds(1000))
 
         # Calculate consensus alignment
         total_votes = 0
@@ -394,12 +415,12 @@ def main():
 
         alignment = majority_votes / total_votes if total_votes > 0 else 0.0
         consensus_alignment.append(alignment)
-        avg_curator_pnl_loss.append(statistics.mean(total_pnl) if total_pnl else 0.0)
+        avg_pnl_loss.append(statistics.mean(total_pnl) if total_pnl else 0.0)
 
     chart4b_data = plot_minority_loss_sensitivity(
         minority_loss_pcts,
         consensus_alignment,
-        avg_curator_pnl_loss,
+        avg_pnl_loss,
         os.path.join(output_dir, 'chart4b_minority_loss_sensitivity.png')
     )
     all_chart_data['chart_4b_minority_loss_sensitivity'] = chart4b_data
@@ -460,7 +481,7 @@ def main():
             curators.append((f"bot_{i}", AIBotCurator(), 1000.0))
 
         config.curators = curators
-        engine, results = run_scenario(config, num_rounds=1000)
+        engine, results = run_scenario(config, num_rounds=scaled_rounds(1000))
 
         # Calculate average earnings
         human_earnings = []
@@ -507,19 +528,16 @@ def main():
 
     for scenario_name, scenario_config in scenarios_to_run.items():
         print(f"  Running {scenario_name}...")
-        engine, results = run_scenario(scenario_config, num_rounds=2000)
+        scenario_rounds = scaled_rounds(2000)
+        engine, results = run_scenario(scenario_config, num_rounds=scenario_rounds)
 
-        # Calculate ELO stability (std dev of post ELOs) per round
-        elo_stability = []
-        for r in results:
-            post_elos = [post.elo_rating for post in engine.posts.values()]
-            std_dev = statistics.stdev(post_elos) if len(post_elos) > 1 else 0.0
-            elo_stability.append(std_dev)
+        # Use per-round snapshots captured by run_scenario.
+        elo_stability = [r['elo_stability'] for r in results]
 
         quality_by_scenario[scenario_name] = elo_stability
 
     chart7_data = plot_feed_quality_over_time(
-        range(2000),
+        range(scaled_rounds(2000)),
         quality_by_scenario,
         os.path.join(output_dir, 'chart7_feed_quality.png')
     )

@@ -5,13 +5,14 @@
 
 const anchor = require("@coral-xyz/anchor");
 const { PublicKey, Keypair, SystemProgram } = require("@solana/web3.js");
-const { keccak_256 } = require("@noble/hashes/sha3.js");
 const fs = require("fs");
 
 // Program ID on localnet
 const PROGRAM_ID = new PublicKey("41rM5dUSCMNSF3GyrXUH7Ykrr7d2suTxs8G2XP9ajD71");
 
 async function main() {
+  const { keccak_256 } = await import("@noble/hashes/sha3.js");
+
   // Connect to localhost
   const connection = new anchor.web3.Connection(
     "http://localhost:8899",

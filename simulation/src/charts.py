@@ -157,7 +157,7 @@ def plot_cumulative_pnl_by_agent(
 def plot_new_market_bootstrap(
     rounds: range,
     subscribers: List[int],
-    curators_participating: List[int],
+    curators_attracted: List[int],
     output_path: str
 ) -> List[Dict[str, Any]]:
     """Chart 3: New market bootstrap curve.
@@ -165,7 +165,7 @@ def plot_new_market_bootstrap(
     Args:
         rounds: Range of round numbers (starting from market creation)
         subscribers: Number of subscribers over time
-        curators_participating: Number of curators participating over time
+        curators_attracted: Number of curators participating over time
         output_path: Path to save PNG file
 
     Returns:
@@ -183,7 +183,7 @@ def plot_new_market_bootstrap(
     ax2 = ax1.twinx()
     color2 = '#10b981'
     ax2.set_ylabel('Curators Participating', fontsize=12, color=color2)
-    ax2.plot(list(rounds), curators_participating, linewidth=2,
+    ax2.plot(list(rounds), curators_attracted, linewidth=2,
              color=color2, linestyle='--', label='Curators')
     ax2.tick_params(axis='y', labelcolor=color2)
 
@@ -197,34 +197,34 @@ def plot_new_market_bootstrap(
         {
             "round": r,
             "subscribers": int(s),
-            "curators_participating": int(c)
+            "curators_attracted": int(c)
         }
-        for r, s, c in zip(rounds, subscribers, curators_participating)
+        for r, s, c in zip(rounds, subscribers, curators_attracted)
     ]
 
 
 def plot_alpha_sensitivity(
     alpha_values: List[float],
-    avg_honest_pnl: List[float],
-    avg_malicious_pnl: List[float],
+    pool_balance: List[float],
+    avg_curator_rewards: List[float],
     output_path: str
 ) -> List[Dict[str, Any]]:
     """Chart 4a: Alpha sensitivity analysis.
 
     Args:
         alpha_values: List of alpha parameter values tested
-        avg_honest_pnl: Average PnL for honest curators at each alpha
-        avg_malicious_pnl: Average PnL for malicious curators at each alpha
+        pool_balance: Final pool balance at each alpha
+        avg_curator_rewards: Average curator rewards at each alpha
         output_path: Path to save PNG file
 
     Returns:
         JSON data points for export
     """
     plt.figure(figsize=(12, 6))
-    plt.plot(alpha_values, avg_honest_pnl, marker='o', linewidth=2,
-             color='#10b981', label='Honest Curators')
-    plt.plot(alpha_values, avg_malicious_pnl, marker='s', linewidth=2,
-             color='#ef4444', label='Malicious Curators')
+    plt.plot(alpha_values, pool_balance, marker='o', linewidth=2,
+             color='#2563eb', label='Pool Balance')
+    plt.plot(alpha_values, avg_curator_rewards, marker='s', linewidth=2,
+             color='#10b981', label='Avg Curator Rewards')
     plt.xlabel('Alpha Parameter', fontsize=12)
     plt.ylabel('Average PnL ($)', fontsize=12)
     plt.title('Alpha Sensitivity: Impact on Curator Earnings', fontsize=14, fontweight='bold')
@@ -240,11 +240,11 @@ def plot_alpha_sensitivity(
 
     # Return JSON data
     json_data = []
-    for alpha, honest, malicious in zip(alpha_values, avg_honest_pnl, avg_malicious_pnl):
+    for alpha, balance, rewards in zip(alpha_values, pool_balance, avg_curator_rewards):
         json_data.append({
             "alpha": float(alpha),
-            "avg_honest_pnl": float(honest),
-            "avg_malicious_pnl": float(malicious)
+            "pool_balance": float(balance),
+            "avg_curator_rewards": float(rewards)
         })
     return json_data
 
@@ -252,7 +252,7 @@ def plot_alpha_sensitivity(
 def plot_minority_loss_sensitivity(
     minority_loss_pcts: List[float],
     consensus_alignment: List[float],
-    avg_curator_pnl: List[float],
+    avg_pnl_loss: List[float],
     output_path: str
 ) -> List[Dict[str, Any]]:
     """Chart 4b: Minority loss sensitivity analysis.
@@ -260,7 +260,7 @@ def plot_minority_loss_sensitivity(
     Args:
         minority_loss_pcts: List of minority loss percentages (e.g., [10, 20, 30, 40, 50])
         consensus_alignment: Average consensus alignment rate at each loss percentage
-        avg_curator_pnl: Average curator PnL at each loss percentage
+        avg_pnl_loss: Average curator PnL impact at each loss percentage
         output_path: Path to save PNG file
 
     Returns:
@@ -280,7 +280,7 @@ def plot_minority_loss_sensitivity(
     ax2 = ax1.twinx()
     color2 = '#10b981'
     ax2.set_ylabel('Average Curator PnL ($)', fontsize=12, color=color2)
-    ax2.plot(minority_loss_pcts, avg_curator_pnl, marker='s',
+    ax2.plot(minority_loss_pcts, avg_pnl_loss, marker='s',
              linewidth=2, color=color2, linestyle='--', label='Avg Curator PnL')
     ax2.tick_params(axis='y', labelcolor=color2)
     ax2.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: f'${x:,.0f}'))
@@ -296,9 +296,9 @@ def plot_minority_loss_sensitivity(
         {
             "minority_loss_pct": float(loss_pct),
             "consensus_alignment": float(consensus),
-            "avg_curator_pnl": float(pnl)
+            "avg_pnl_loss": float(pnl)
         }
-        for loss_pct, consensus, pnl in zip(minority_loss_pcts, consensus_alignment, avg_curator_pnl)
+        for loss_pct, consensus, pnl in zip(minority_loss_pcts, consensus_alignment, avg_pnl_loss)
     ]
 
 
