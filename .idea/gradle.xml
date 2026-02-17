@@ -18,6 +18,15 @@
       <GradleProjectSettings>
         <option name="externalProjectPath" value="$PROJECT_DIR$/frontend/node_modules/@react-native/gradle-plugin" />
         <option name="gradleJvm" value="openjdk-24" />
+        <option name="modules">
+          <set>
+            <option value="$PROJECT_DIR$/frontend/node_modules/@react-native/gradle-plugin" />
+            <option value="$PROJECT_DIR$/frontend/node_modules/@react-native/gradle-plugin/react-native-gradle-plugin" />
+            <option value="$PROJECT_DIR$/frontend/node_modules/@react-native/gradle-plugin/settings-plugin" />
+            <option value="$PROJECT_DIR$/frontend/node_modules/@react-native/gradle-plugin/shared" />
+            <option value="$PROJECT_DIR$/frontend/node_modules/@react-native/gradle-plugin/shared-testutil" />
+          </set>
+        </option>
       </GradleProjectSettings>
       <GradleProjectSettings>
         <option name="externalProjectPath" value="$PROJECT_DIR$/frontend/node_modules/@solana-mobile/mobile-wallet-adapter-protocol/android" />

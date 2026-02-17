@@ -1,7 +1,16 @@
 services:
   postgres:
     image: postgres:16-alpine
-    restart: unless-stopped
+    restart: on-failure:3
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        /usr/local/bin/docker-entrypoint.sh postgres || {
+          code=$$?
+          echo "FATAL: Postgres failed to start after configured retry attempts. Inspect logs above."
+          exit $$code
+        }
     environment:
       POSTGRES_DB: moltrank
       POSTGRES_USER: moltrank
