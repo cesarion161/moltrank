@@ -18,6 +18,7 @@ SEED_READER_WALLET="smoke-reader-wallet-910101"
 MISSING_WALLET="smoke-missing-wallet-910101"
 MISSING_AGENT="smoke-missing-agent-910101"
 EMPTY_LINK_WALLET="smoke-empty-$(date +%s)"
+BOOTSTRAP_MARKET_READER_WALLET="smoke-bootstrap-reader-910101"
 
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -143,6 +144,7 @@ BEGIN;
 DELETE FROM commitment WHERE pair_id = ${SEED_PAIR_ID};
 DELETE FROM pair_skip WHERE pair_id = ${SEED_PAIR_ID};
 DELETE FROM subscription WHERE market_id = ${SEED_MARKET_ID};
+DELETE FROM subscription WHERE reader_wallet = '${BOOTSTRAP_MARKET_READER_WALLET}';
 DELETE FROM golden_set_item WHERE source IN ('smoke-seed', 'smoke-api');
 DELETE FROM pair WHERE id = ${SEED_PAIR_ID};
 DELETE FROM curator WHERE wallet = '${SEED_CURATOR_WALLET}' AND market_id = ${SEED_MARKET_ID};
@@ -215,6 +217,8 @@ run_empty_state_checks() {
   assert_request "leaderboard-empty" "GET" "/api/leaderboard?marketId=1&limit=10" "200"
   assert_request "identity-link-create" "POST" "/api/identity/link" "201" \
     "{\"wallet\":\"${EMPTY_LINK_WALLET}\",\"xAccount\":\"smoke_empty\",\"verified\":false}"
+  assert_request "subscribe-bootstrap-market" "POST" "/api/subscribe" "201" \
+    "{\"readerWallet\":\"${BOOTSTRAP_MARKET_READER_WALLET}\",\"market\":{\"id\":1},\"amount\":1000,\"type\":\"FREE_DELAY\"}"
   assert_request "subscribe-bad-market" "POST" "/api/subscribe" "400" \
     '{"readerWallet":"smoke-reader-wallet-missing","market":{"id":999999},"amount":1000,"type":"REALTIME"}'
 }

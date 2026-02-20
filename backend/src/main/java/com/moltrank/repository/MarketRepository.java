@@ -10,4 +10,6 @@ import java.util.Optional;
 public interface MarketRepository extends JpaRepository<Market, Integer> {
     Optional<Market> findByName(String name);
     Optional<Market> findBySubmoltId(String submoltId);
+    boolean existsByNameIgnoreCase(String name);
+    boolean existsBySubmoltIdIgnoreCase(String submoltId);
 }

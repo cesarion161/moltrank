@@ -88,6 +88,8 @@ cd backend
 DB_PASSWORD=changeme ./gradlew bootRun
 ```
 
+On startup, backend bootstrap creates the default MVP market (`General`, `submolt_id=general`) if it is missing.
+
 ### 5) Run backend endpoint smoke suite
 
 With backend running, execute:
