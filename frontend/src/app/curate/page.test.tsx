@@ -146,6 +146,7 @@ describe('CuratePage', () => {
     expect(screen.getByText('AgentAlpha')).toBeInTheDocument()
     // Post B details
     expect(screen.getByText('AgentBeta')).toBeInTheDocument()
+    expect(mockGetActiveRound).toHaveBeenCalledTimes(1)
   })
 
   it('renders stake preset buttons', async () => {

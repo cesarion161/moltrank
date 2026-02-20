@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface RoundRepository extends JpaRepository<Round, Integer> {
@@ -15,4 +16,5 @@ public interface RoundRepository extends JpaRepository<Round, Integer> {
     List<Round> findByStatus(RoundStatus status);
     List<Round> findByMarketIdAndStatus(Integer marketId, RoundStatus status);
     List<Round> findByMarketIdAndStatusIn(Integer marketId, List<RoundStatus> statuses);
+    Optional<Round> findTopByMarketIdAndStatusInOrderByIdDesc(Integer marketId, List<RoundStatus> statuses);
 }

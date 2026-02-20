@@ -283,6 +283,34 @@ describe('ApiClient', () => {
         })
       )
     })
+
+    it('getActiveRound fetches active round with default marketId', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ id: 1, roundId: 1, status: 'COMMIT' }),
+      })
+
+      await client.getActiveRound()
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/rounds/active?marketId=1',
+        expect.any(Object)
+      )
+    })
+
+    it('getActiveRound uses custom marketId', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ id: 2, roundId: 2, status: 'OPEN' }),
+      })
+
+      await client.getActiveRound(2)
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/rounds/active?marketId=2',
+        expect.any(Object)
+      )
+    })
   })
 
   describe('constructor', () => {

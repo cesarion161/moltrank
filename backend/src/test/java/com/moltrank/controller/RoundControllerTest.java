@@ -3,6 +3,7 @@ package com.moltrank.controller;
 import com.moltrank.model.Market;
 import com.moltrank.model.Round;
 import com.moltrank.model.RoundStatus;
+import com.moltrank.repository.CommitmentRepository;
 import com.moltrank.repository.RoundRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -33,6 +35,9 @@ class RoundControllerTest {
 
     @MockitoBean
     private RoundRepository roundRepository;
+
+    @MockitoBean
+    private CommitmentRepository commitmentRepository;
 
     private static final class ByteBuddyInterceptorStub {
     }
@@ -100,6 +105,35 @@ class RoundControllerTest {
                 .andExpect(jsonPath("$[0].pairs").value(10))
                 .andExpect(jsonPath("$[1].id").value(1))
                 .andExpect(jsonPath("$[1].status").value("SETTLED"));
+    }
+
+    @Test
+    void getActiveRound_returnsLatestActiveRound() throws Exception {
+        Market market = buildMarket();
+        Round round = buildRound(7, RoundStatus.COMMIT, market);
+        round.setPairs(10);
+
+        when(roundRepository.findTopByMarketIdAndStatusInOrderByIdDesc(eq(1), anyList()))
+                .thenReturn(Optional.of(round));
+        when(commitmentRepository.countDistinctCommittedPairsByRoundId(7))
+                .thenReturn(3L);
+
+        mockMvc.perform(get("/api/rounds/active"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(7))
+                .andExpect(jsonPath("$.roundId").value(7))
+                .andExpect(jsonPath("$.status").value("COMMIT"))
+                .andExpect(jsonPath("$.totalPairs").value(10))
+                .andExpect(jsonPath("$.remainingPairs").value(7));
+    }
+
+    @Test
+    void getActiveRound_returns404WhenNoneExists() throws Exception {
+        when(roundRepository.findTopByMarketIdAndStatusInOrderByIdDesc(eq(1), anyList()))
+                .thenReturn(Optional.empty());
+
+        mockMvc.perform(get("/api/rounds/active"))
+                .andExpect(status().isNotFound());
     }
 
     @Test

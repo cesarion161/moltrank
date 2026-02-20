@@ -1,7 +1,10 @@
 package com.moltrank.controller;
 
+import com.moltrank.controller.dto.ActiveRoundResponse;
 import com.moltrank.controller.dto.RoundResponse;
 import com.moltrank.model.Round;
+import com.moltrank.model.RoundStatus;
+import com.moltrank.repository.CommitmentRepository;
 import com.moltrank.repository.RoundRepository;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
@@ -16,10 +19,20 @@ import java.util.List;
 @RequestMapping("/api/rounds")
 public class RoundController {
 
-    private final RoundRepository roundRepository;
+    private static final List<RoundStatus> ACTIVE_STATUSES = List.of(
+            RoundStatus.OPEN,
+            RoundStatus.COMMIT,
+            RoundStatus.REVEAL,
+            RoundStatus.SETTLING
+    );
 
-    public RoundController(RoundRepository roundRepository) {
+    private final RoundRepository roundRepository;
+    private final CommitmentRepository commitmentRepository;
+
+    public RoundController(RoundRepository roundRepository,
+                           CommitmentRepository commitmentRepository) {
         this.roundRepository = roundRepository;
+        this.commitmentRepository = commitmentRepository;
     }
 
     /**
@@ -59,5 +72,31 @@ public class RoundController {
         }
 
         return ResponseEntity.ok(RoundResponse.from(round));
+    }
+
+    /**
+     * Get the latest active round for a market.
+     *
+     * @param marketId Optional market ID filter (defaults to 1)
+     * @return Active round payload used by curate flow
+     */
+    @GetMapping("/active")
+    public ResponseEntity<ActiveRoundResponse> getActiveRound(
+            @RequestParam(defaultValue = "1") Integer marketId) {
+
+        Round round = roundRepository.findTopByMarketIdAndStatusInOrderByIdDesc(
+                marketId,
+                ACTIVE_STATUSES
+        ).orElse(null);
+
+        if (round == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        int totalPairs = round.getPairs() != null ? round.getPairs() : 0;
+        long committedPairs = commitmentRepository.countDistinctCommittedPairsByRoundId(round.getId());
+        int remainingPairs = (int) Math.max(0, totalPairs - committedPairs);
+
+        return ResponseEntity.ok(ActiveRoundResponse.from(round, totalPairs, remainingPairs));
     }
 }
