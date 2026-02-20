@@ -1,7 +1,7 @@
-use anchor_lang::prelude::*;
-use anchor_lang::solana_program::keccak;
-use crate::state::{Round, Commitment};
 use crate::error::MoltRankError;
+use crate::instructions::commitment_codec::{compute_commitment_hash, parse_reveal_payload};
+use crate::state::{Commitment, Round};
+use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
 #[instruction(pair_id: u32)]
@@ -47,38 +47,24 @@ pub fn handler(
     );
 
     // Validation: Not already revealed
-    require!(
-        !commitment.revealed,
-        MoltRankError::AlreadyRevealed
-    );
+    require!(!commitment.revealed, MoltRankError::AlreadyRevealed);
 
-    // Verify hash matches
-    let computed_hash = keccak::hash(&decrypted_payload);
+    let parsed_payload = parse_reveal_payload(&decrypted_payload)?;
+    let computed_hash = compute_commitment_hash(commitment, &parsed_payload);
     require!(
-        computed_hash.to_bytes() == commitment.commitment_hash,
+        computed_hash == commitment.commitment_hash,
         MoltRankError::HashMismatch
-    );
-
-    // Extract vote from payload (first byte)
-    require!(
-        !decrypted_payload.is_empty(),
-        MoltRankError::InvalidRevealPayload
-    );
-    let vote = decrypted_payload[0];
-    require!(
-        vote == 0 || vote == 1,
-        MoltRankError::InvalidVoteValue
     );
 
     // Mark as revealed and store vote
     commitment.revealed = true;
-    commitment.vote = Some(vote);
+    commitment.vote = Some(parsed_payload.vote);
 
     msg!(
         "Manual reveal successful: curator={}, pair={}, vote={}",
         commitment.curator_wallet,
         commitment.pair_id,
-        vote
+        parsed_payload.vote
     );
 
     Ok(())

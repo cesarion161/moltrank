@@ -162,7 +162,7 @@ class PairsControllerTest {
         saved.setId(1);
         saved.setPair(pair);
         saved.setCuratorWallet(WALLET);
-        saved.setHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab");
+        saved.setHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890");
         saved.setStake(1000000000L);
         saved.setEncryptedReveal("encrypted-payload");
         saved.setRevealed(false);
@@ -172,7 +172,7 @@ class PairsControllerTest {
         String requestBody = """
                 {
                     "curatorWallet": "%s",
-                    "hash": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
+                    "hash": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
                     "stake": 1000000000,
                     "encryptedReveal": "encrypted-payload"
                 }
@@ -203,7 +203,7 @@ class PairsControllerTest {
         when(identityRepository.findByWallet(WALLET)).thenReturn(Optional.of(buildIdentity(WALLET)));
         when(commitmentRepository.save(any(Commitment.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        String commitmentHash = "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab";
+        String commitmentHash = "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
         String requestBody = """
                 {
                     "wallet": "%s",
@@ -237,9 +237,30 @@ class PairsControllerTest {
         String requestBody = """
                 {
                     "wallet": "%s",
-                    "commitmentHash": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
+                    "commitmentHash": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
                     "stakeAmount": 0,
                     "encryptedReveal": ""
+                }
+                """.formatted(WALLET);
+
+        mockMvc.perform(post("/api/pairs/{id}/commit", 1)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void commitPair_returns400ForInvalidCommitmentHash() throws Exception {
+        Pair pair = buildPair(false);
+        when(pairRepository.findById(1)).thenReturn(Optional.of(pair));
+        when(identityRepository.findByWallet(WALLET)).thenReturn(Optional.of(buildIdentity(WALLET)));
+
+        String requestBody = """
+                {
+                    "wallet": "%s",
+                    "commitmentHash": "not-a-hash",
+                    "stakeAmount": 1000000000,
+                    "encryptedReveal": "encrypted-payload"
                 }
                 """.formatted(WALLET);
 
@@ -258,7 +279,7 @@ class PairsControllerTest {
         String requestBody = """
                 {
                     "wallet": "%s",
-                    "commitmentHash": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
+                    "commitmentHash": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
                     "stakeAmount": 1000000000,
                     "encryptedReveal": "encrypted-payload"
                 }
@@ -338,7 +359,7 @@ class PairsControllerTest {
         saved.setId(1);
         saved.setPair(pair);
         saved.setCuratorWallet(WALLET);
-        saved.setHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab");
+        saved.setHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890");
         saved.setStake(1000000000L);
         saved.setEncryptedReveal("encrypted-payload");
         saved.setRevealed(false);
@@ -348,7 +369,7 @@ class PairsControllerTest {
         String requestBody = """
                 {
                     "curatorWallet": "%s",
-                    "hash": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
+                    "hash": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
                     "stake": 1000000000,
                     "encryptedReveal": "encrypted-payload"
                 }

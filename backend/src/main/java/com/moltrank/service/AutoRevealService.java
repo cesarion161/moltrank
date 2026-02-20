@@ -16,6 +16,7 @@ import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.OffsetDateTime;
 import java.util.Base64;
 import java.util.List;
@@ -23,7 +24,6 @@ import java.util.List;
 /**
  * Auto-reveal service for committed votes.
  * After commit window closes, automatically decrypts and reveals votes on behalf of curators.
- *
  * Handles:
  * - Decrypting encrypted payloads using session key
  * - Submitting reveal transactions to Solana
@@ -115,11 +115,7 @@ public class AutoRevealService {
                 commitment.getId(), commitment.getCuratorWallet());
 
         try {
-            // Decrypt the encrypted reveal payload
-            String decryptedPayload = decryptReveal(commitment.getEncryptedReveal());
-
-            // Parse the payload to extract choice and nonce
-            RevealPayload payload = parseRevealPayload(decryptedPayload);
+            RevealPayload payload = decodeRevealPayload(commitment.getEncryptedReveal());
 
             // Verify the commitment hash matches
             if (!verifyCommitmentHash(commitment, payload)) {
@@ -134,7 +130,7 @@ public class AutoRevealService {
                 // Update commitment as revealed
                 commitment.setRevealed(true);
                 commitment.setChoice(payload.choice);
-                commitment.setNonce(payload.nonce);
+                commitment.setNonce(payload.nonceHex);
                 commitment.setRevealedAt(OffsetDateTime.now());
                 commitmentRepository.save(commitment);
 
@@ -153,9 +149,23 @@ public class AutoRevealService {
     }
 
     /**
-     * Decrypts an encrypted reveal payload using the session key.
+     * Decode canonical payload first, then fallback to legacy AES payload format.
      */
-    private String decryptReveal(String encryptedPayload) throws Exception {
+    private RevealPayload decodeRevealPayload(String encodedPayload) throws Exception {
+        try {
+            CommitmentCodec.RevealPayload canonical = CommitmentCodec.decodeRevealPayloadBase64(encodedPayload);
+            byte[] rawPayload = Base64.getDecoder().decode(encodedPayload);
+            return new RevealPayload(canonical.choice(), canonical.nonceHex(), canonical.nonce(), rawPayload);
+        } catch (IllegalArgumentException canonicalError) {
+            String decryptedLegacyPayload = decryptLegacyReveal(encodedPayload);
+            return parseLegacyRevealPayload(decryptedLegacyPayload);
+        }
+    }
+
+    /**
+     * Decrypts legacy encrypted payloads using the session key.
+     */
+    private String decryptLegacyReveal(String encryptedPayload) throws Exception {
         // For MVP: simple AES decryption
         // In production: use proper key derivation and secure key storage
 
@@ -175,29 +185,70 @@ public class AutoRevealService {
     }
 
     /**
-     * Parses the decrypted reveal payload.
-     * Expected format: "choice:nonce" (e.g., "POST_A:abc123...")
+     * Parses legacy reveal payload.
+     * Expected format: "choice:nonce" (e.g., "A:abc123...").
      */
-    private RevealPayload parseRevealPayload(String payload) {
+    private RevealPayload parseLegacyRevealPayload(String payload) {
         String[] parts = payload.split(":", 2);
         if (parts.length != 2) {
             throw new IllegalArgumentException("Invalid reveal payload format: " + payload);
         }
 
         PairWinner choice = PairWinner.valueOf(parts[0]);
-        String nonce = parts[1];
+        if (choice == PairWinner.TIE) {
+            throw new IllegalArgumentException("Legacy reveal payload choice must be A or B");
+        }
+        String nonceValue = parts[1];
+        if (nonceValue.matches("^[0-9a-fA-F]{64}$")) {
+            byte[] nonceBytes = parseHex(nonceValue);
+            byte[] rawPayload = new byte[1 + nonceBytes.length];
+            rawPayload[0] = choice == PairWinner.A ? (byte) 0 : (byte) 1;
+            System.arraycopy(nonceBytes, 0, rawPayload, 1, nonceBytes.length);
+            return new RevealPayload(choice, nonceValue.toLowerCase(), nonceBytes, rawPayload);
+        }
 
-        return new RevealPayload(choice, nonce);
+        return new RevealPayload(choice, null, null, null);
     }
 
     /**
      * Verifies that the commitment hash matches the revealed choice and nonce.
      */
     private boolean verifyCommitmentHash(Commitment commitment, RevealPayload payload) {
-        // In production: hash(choice + nonce + salt) should match commitment.hash
-        // For MVP: skip verification or use simple hash
-        // TODO: Implement proper hash verification using keccak256 or sha256
-        return true;
+        final String storedHash;
+        try {
+            storedHash = CommitmentCodec.normalizeCommitmentHash(commitment.getHash());
+        } catch (IllegalArgumentException ex) {
+            log.warn("Commitment {} has invalid stored hash format", commitment.getId(), ex);
+            return false;
+        }
+
+        if (payload.nonceBytes != null && payload.choice != PairWinner.TIE) {
+            String canonicalHash = CommitmentCodec.computeCommitmentHash(
+                    commitment.getCuratorWallet(),
+                    commitment.getPair().getId(),
+                    payload.choice,
+                    commitment.getStake(),
+                    payload.nonceBytes
+            );
+            if (canonicalHash.equals(storedHash)) {
+                return true;
+            }
+        }
+
+        if (payload.rawPayload != null) {
+            try {
+                MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                String legacyHash = "0x" + toHex(digest.digest(payload.rawPayload));
+                if (legacyHash.equals(storedHash)) {
+                    log.warn("Commitment {} matched legacy SHA-256 format; canonical keccak expected", commitment.getId());
+                    return true;
+                }
+            } catch (Exception ex) {
+                log.warn("Unable to compute legacy SHA-256 fallback hash for commitment {}", commitment.getId(), ex);
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -293,13 +344,24 @@ public class AutoRevealService {
     /**
      * Internal class for parsed reveal payload.
      */
-    private static class RevealPayload {
-        final PairWinner choice;
-        final String nonce;
+    private record RevealPayload(PairWinner choice, String nonceHex, byte[] nonceBytes, byte[] rawPayload) {
+    }
 
-        RevealPayload(PairWinner choice, String nonce) {
-            this.choice = choice;
-            this.nonce = nonce;
+    private static byte[] parseHex(String value) {
+        byte[] out = new byte[value.length() / 2];
+        for (int i = 0; i < out.length; i++) {
+            int start = i * 2;
+            out[i] = (byte) Integer.parseInt(value.substring(start, start + 2), 16);
         }
+        return out;
+    }
+
+    private static String toHex(byte[] bytes) {
+        StringBuilder out = new StringBuilder(bytes.length * 2);
+        for (byte value : bytes) {
+            out.append(Character.forDigit((value >>> 4) & 0x0f, 16));
+            out.append(Character.forDigit(value & 0x0f, 16));
+        }
+        return out.toString();
     }
 }

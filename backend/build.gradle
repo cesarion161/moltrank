@@ -30,6 +30,7 @@ dependencies {
     implementation 'org.flywaydb:flyway-database-postgresql'
     implementation 'org.jsoup:jsoup:1.18.3'
     implementation 'com.mmorrell:solanaj:1.28.0'
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.83'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.boot:spring-boot-webmvc-test'

@@ -1,0 +1,22 @@
+[
+  {
+    "name": "vector_zero_wallet_a",
+    "wallet": "11111111111111111111111111111111",
+    "pairId": 42,
+    "stakeAmount": 5000000000,
+    "choice": "A",
+    "nonceHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "revealPayloadBase64": "AAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f",
+    "commitmentHash": "0x4aed971d471472c3b59e1e629a67a2ad7e54bc99d0fe0747fcac5c6c4edd71ca"
+  },
+  {
+    "name": "vector_mvp_wallet_b",
+    "wallet": "4Nd1mYQzvgV8Vr3Z3nYb7pD6T8K9jF2eqWxY1S3Qh5Ro",
+    "pairId": 1,
+    "stakeAmount": 50,
+    "choice": "B",
+    "nonceHex": "f1e2d3c4b5a697887766554433221100ffeeddccbbaa99887766554433221100",
+    "revealPayloadBase64": "AfHi08S1ppeId2ZVRDMiEQD/7t3Mu6qZiHdmVUQzIhEA",
+    "commitmentHash": "0x8dfd0082819b1a894e7abd7ca5c2f584f79e425669bbbf14b0c3ecf50abe4412"
+  }
+]

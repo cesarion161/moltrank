@@ -8,6 +8,7 @@ import com.moltrank.model.Pair;
 import com.moltrank.repository.CommitmentRepository;
 import com.moltrank.repository.IdentityRepository;
 import com.moltrank.repository.PairRepository;
+import com.moltrank.service.CommitmentCodec;
 import com.moltrank.service.PairSelectionService;
 import com.moltrank.service.PairSkipService;
 import org.springframework.http.HttpStatus;
@@ -92,9 +93,16 @@ public class PairsController {
             return ResponseEntity.badRequest().build();
         }
 
+        String normalizedHash;
+        try {
+            normalizedHash = CommitmentCodec.normalizeCommitmentHash(request.commitmentHash());
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().build();
+        }
+
         Commitment commitment = new Commitment();
         commitment.setCuratorWallet(request.wallet());
-        commitment.setHash(request.commitmentHash());
+        commitment.setHash(normalizedHash);
         commitment.setStake(request.stakeAmount());
         commitment.setEncryptedReveal(request.encryptedReveal());
 

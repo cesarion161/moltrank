@@ -4,6 +4,11 @@ import { useState, useEffect, useCallback } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { useIdentity } from '@/hooks/use-identity'
 import { Button } from '@/components/ui/button'
+import {
+  computeCommitmentHashHex,
+  encodeRevealPayloadBase64,
+  generateNonce,
+} from '@/lib/commitment'
 import type { Pair, ActiveRound } from '@/lib/types'
 
 const STAKE_PRESETS = [
@@ -13,38 +18,6 @@ const STAKE_PRESETS = [
 ] as const
 
 type Choice = 'A' | 'B'
-
-function generateNonce(): Uint8Array {
-  const nonce = new Uint8Array(32)
-  crypto.getRandomValues(nonce)
-  return nonce
-}
-
-async function computeCommitmentHash(
-  choice: Choice,
-  nonce: Uint8Array,
-): Promise<string> {
-  // On-chain commit_vote expects hash of (choice_byte + salt)
-  // choice is 0 for A, 1 for B
-  const choiceByte = choice === 'A' ? 0 : 1
-  const data = new Uint8Array([choiceByte, ...nonce])
-  // Use SubtleCrypto SHA-256 as a stand-in; production should use
-  // @noble/hashes/sha3 keccak_256 to match Anchor program verification
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
-}
-
-function encryptRevealPayload(
-  choice: Choice,
-  nonce: Uint8Array,
-): string {
-  // Encode reveal payload: choice byte + nonce
-  const choiceByte = choice === 'A' ? 0 : 1
-  const payload = new Uint8Array([choiceByte, ...nonce])
-  return btoa(String.fromCharCode(...payload))
-}
 
 function RoundStatusBar({ round }: { round: ActiveRound | null }) {
   const [now, setNow] = useState(Date.now())
@@ -238,8 +211,14 @@ export default function CuratePage() {
 
     try {
       const nonce = generateNonce()
-      const commitmentHash = await computeCommitmentHash(choice, nonce)
-      const encryptedReveal = encryptRevealPayload(choice, nonce)
+      const commitmentHash = computeCommitmentHashHex({
+        wallet: walletAddress,
+        pairId: pair.id,
+        choice,
+        stakeAmount: activeStake,
+        nonce,
+      })
+      const encryptedReveal = encodeRevealPayloadBase64(choice, nonce)
 
       // Submit commitment to backend (which coordinates with on-chain)
       await apiClient.commitVote(pair.id, {

@@ -23,15 +23,12 @@ vi.mock('@/hooks/use-identity', () => ({
   useIdentity: () => mockUseIdentity(),
 }))
 
-// Mock crypto.subtle for commitment hash
-const mockDigest = vi.fn().mockResolvedValue(new ArrayBuffer(32))
 Object.defineProperty(globalThis, 'crypto', {
   value: {
     getRandomValues: (arr: Uint8Array) => {
       for (let i = 0; i < arr.length; i++) arr[i] = i
       return arr
     },
-    subtle: { digest: mockDigest },
   },
 })
 
@@ -98,7 +95,6 @@ describe('CuratePage', () => {
   beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    mockDigest.mockResolvedValue(new ArrayBuffer(32))
     mockUseIdentity.mockReturnValue(defaultIdentity)
     vi.useFakeTimers({ shouldAdvanceTime: true })
   })
@@ -255,7 +251,7 @@ describe('CuratePage', () => {
     await waitFor(() => {
       expect(mockCommitVote).toHaveBeenCalledWith(1, expect.objectContaining({
         wallet: MOCK_WALLET,
-        commitmentHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+        commitmentHash: expect.stringMatching(/^0x[0-9a-f]{64}$/),
         encryptedReveal: expect.any(String),
         stakeAmount: 50,
       }))
