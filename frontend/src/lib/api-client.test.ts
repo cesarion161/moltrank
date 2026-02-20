@@ -284,6 +284,26 @@ describe('ApiClient', () => {
       )
     })
 
+    it('skipPair posts wallet payload to skip endpoint', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 204,
+        json: () => Promise.reject(new SyntaxError('Unexpected end of JSON input')),
+      })
+
+      await client.skipPair(7, 'wallet-123')
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/pairs/7/skip',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            wallet: 'wallet-123',
+          }),
+        })
+      )
+    })
+
     it('getActiveRound fetches active round with default marketId', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,

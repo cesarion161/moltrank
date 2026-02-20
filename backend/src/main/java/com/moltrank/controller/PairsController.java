@@ -2,11 +2,13 @@ package com.moltrank.controller;
 
 import com.moltrank.controller.dto.CommitPairRequest;
 import com.moltrank.controller.dto.PairResponse;
+import com.moltrank.controller.dto.SkipPairRequest;
 import com.moltrank.model.Commitment;
 import com.moltrank.model.Pair;
 import com.moltrank.repository.CommitmentRepository;
 import com.moltrank.repository.IdentityRepository;
 import com.moltrank.repository.PairRepository;
+import com.moltrank.service.PairSkipService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -23,13 +25,16 @@ public class PairsController {
     private final PairRepository pairRepository;
     private final CommitmentRepository commitmentRepository;
     private final IdentityRepository identityRepository;
+    private final PairSkipService pairSkipService;
 
     public PairsController(PairRepository pairRepository,
                            CommitmentRepository commitmentRepository,
-                           IdentityRepository identityRepository) {
+                           IdentityRepository identityRepository,
+                           PairSkipService pairSkipService) {
         this.pairRepository = pairRepository;
         this.commitmentRepository = commitmentRepository;
         this.identityRepository = identityRepository;
+        this.pairSkipService = pairSkipService;
     }
 
     /**
@@ -98,5 +103,36 @@ public class PairsController {
         // Save commitment
         commitmentRepository.save(commitment);
         return ResponseEntity.status(HttpStatus.CREATED).build();
+    }
+
+    /**
+     * Skip a pair for this curator so it is not returned again.
+     *
+     * @param id The pair ID
+     * @param request The skip request payload
+     * @return 204 when skip is recorded (idempotent)
+     */
+    @PostMapping("/{id}/skip")
+    public ResponseEntity<Void> skipPair(
+            @PathVariable Integer id,
+            @RequestBody SkipPairRequest request) {
+
+        Pair pair = pairRepository.findById(id)
+                .orElse(null);
+
+        if (pair == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        if (!request.isValid()) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        if (identityRepository.findByWallet(request.wallet()).isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        pairSkipService.skipPair(pair, request.wallet());
+        return ResponseEntity.noContent().build();
     }
 }

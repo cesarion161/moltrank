@@ -4,6 +4,7 @@ import com.moltrank.model.*;
 import com.moltrank.repository.CommitmentRepository;
 import com.moltrank.repository.IdentityRepository;
 import com.moltrank.repository.PairRepository;
+import com.moltrank.service.PairSkipService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +42,9 @@ class PairsControllerTest {
 
     @MockitoBean
     private IdentityRepository identityRepository;
+
+    @MockitoBean
+    private PairSkipService pairSkipService;
 
     private static final String WALLET = "4Nd1mYQzvgV8Vr3Z3nYb7pD6T8K9jF2eqWxY1S3Qh5Ro";
 
@@ -325,5 +329,97 @@ class PairsControllerTest {
                         .content(requestBody))
                 .andExpect(status().isCreated())
                 .andExpect(content().string(""));
+    }
+
+    @Test
+    void skipPair_recordsSkipAndReturns204() throws Exception {
+        Pair pair = buildPair(false);
+        when(pairRepository.findById(1)).thenReturn(Optional.of(pair));
+        when(identityRepository.findByWallet(WALLET)).thenReturn(Optional.of(buildIdentity(WALLET)));
+
+        String requestBody = """
+                {
+                    "wallet": "%s"
+                }
+                """.formatted(WALLET);
+
+        mockMvc.perform(post("/api/pairs/{id}/skip", 1)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+
+        verify(pairSkipService).skipPair(pair, WALLET);
+    }
+
+    @Test
+    void skipPair_acceptsLegacyCuratorWalletAlias() throws Exception {
+        Pair pair = buildPair(false);
+        when(pairRepository.findById(1)).thenReturn(Optional.of(pair));
+        when(identityRepository.findByWallet(WALLET)).thenReturn(Optional.of(buildIdentity(WALLET)));
+
+        String requestBody = """
+                {
+                    "curatorWallet": "%s"
+                }
+                """.formatted(WALLET);
+
+        mockMvc.perform(post("/api/pairs/{id}/skip", 1)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isNoContent());
+
+        verify(pairSkipService).skipPair(pair, WALLET);
+    }
+
+    @Test
+    void skipPair_returns404ForInvalidPair() throws Exception {
+        when(pairRepository.findById(999)).thenReturn(Optional.empty());
+
+        String requestBody = """
+                {
+                    "wallet": "%s"
+                }
+                """.formatted(WALLET);
+
+        mockMvc.perform(post("/api/pairs/{id}/skip", 999)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void skipPair_returns400ForInvalidPayload() throws Exception {
+        Pair pair = buildPair(false);
+        when(pairRepository.findById(1)).thenReturn(Optional.of(pair));
+
+        String requestBody = """
+                {
+                    "wallet": "   "
+                }
+                """;
+
+        mockMvc.perform(post("/api/pairs/{id}/skip", 1)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void skipPair_returns400WhenWalletIdentityDoesNotExist() throws Exception {
+        Pair pair = buildPair(false);
+        when(pairRepository.findById(1)).thenReturn(Optional.of(pair));
+        when(identityRepository.findByWallet(WALLET)).thenReturn(Optional.empty());
+
+        String requestBody = """
+                {
+                    "wallet": "%s"
+                }
+                """.formatted(WALLET);
+
+        mockMvc.perform(post("/api/pairs/{id}/skip", 1)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isBadRequest());
     }
 }

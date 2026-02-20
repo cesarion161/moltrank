@@ -112,7 +112,7 @@ Smoke suite expectations:
 
 ```bash
 cd frontend
-nvm use 22
+nvm use
 npm run dev
 ```
 

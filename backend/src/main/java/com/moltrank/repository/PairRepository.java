@@ -23,6 +23,11 @@ public interface PairRepository extends JpaRepository<Pair, Integer> {
             "  WHERE c.pair.id = p.id " +
             "  AND c.curatorWallet = :wallet" +
             ") " +
+            "AND NOT EXISTS (" +
+            "  SELECT s FROM PairSkip s " +
+            "  WHERE s.pair.id = p.id " +
+            "  AND s.curatorWallet = :wallet" +
+            ") " +
             "ORDER BY p.id ASC")
     Optional<Pair> findNextPairForCurator(@Param("wallet") String wallet,
                                           @Param("marketId") Integer marketId);

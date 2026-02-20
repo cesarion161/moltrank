@@ -12,6 +12,8 @@ SEED_PAIR_ID=910401
 SEED_IDENTITY_ID=910501
 SEED_GOLDEN_SET_ID=910601
 SEED_CURATOR_WALLET="smoke-curator-wallet-910101"
+SEED_SKIP_WALLET="smoke-skip-wallet-910102"
+SEED_SKIP_IDENTITY_ID=910502
 SEED_READER_WALLET="smoke-reader-wallet-910101"
 MISSING_WALLET="smoke-missing-wallet-910101"
 MISSING_AGENT="smoke-missing-agent-910101"
@@ -139,6 +141,7 @@ seed_smoke_data() {
 BEGIN;
 
 DELETE FROM commitment WHERE pair_id = ${SEED_PAIR_ID};
+DELETE FROM pair_skip WHERE pair_id = ${SEED_PAIR_ID};
 DELETE FROM subscription WHERE market_id = ${SEED_MARKET_ID};
 DELETE FROM golden_set_item WHERE source IN ('smoke-seed', 'smoke-api');
 DELETE FROM pair WHERE id = ${SEED_PAIR_ID};
@@ -146,10 +149,15 @@ DELETE FROM curator WHERE wallet = '${SEED_CURATOR_WALLET}' AND market_id = ${SE
 DELETE FROM post WHERE id IN (${SEED_POST_A_ID}, ${SEED_POST_B_ID});
 DELETE FROM round WHERE id = ${SEED_ROUND_ID};
 DELETE FROM market WHERE id = ${SEED_MARKET_ID};
-DELETE FROM identity WHERE wallet = '${SEED_CURATOR_WALLET}' OR id = ${SEED_IDENTITY_ID};
+DELETE FROM identity
+WHERE wallet IN ('${SEED_CURATOR_WALLET}', '${SEED_SKIP_WALLET}')
+   OR id IN (${SEED_IDENTITY_ID}, ${SEED_SKIP_IDENTITY_ID});
 
 INSERT INTO identity (id, wallet, x_account, verified, created_at, updated_at)
 VALUES (${SEED_IDENTITY_ID}, '${SEED_CURATOR_WALLET}', 'smoke_curator', true, NOW(), NOW());
+
+INSERT INTO identity (id, wallet, x_account, verified, created_at, updated_at)
+VALUES (${SEED_SKIP_IDENTITY_ID}, '${SEED_SKIP_WALLET}', 'smoke_skipper', true, NOW(), NOW());
 
 INSERT INTO market (
   id, name, submolt_id, subscription_revenue, subscribers, creation_bond, max_pairs, created_at, updated_at
@@ -218,6 +226,10 @@ run_seeded_happy_path_checks() {
   assert_request "round-detail-seeded" "GET" "/api/rounds/${SEED_ROUND_ID}" "200" "" "\"status\":\"OPEN\""
   assert_request "agent-seeded" "GET" "/api/agents/smoke-agent-alpha" "200" "" "\"agentId\":\"smoke-agent-alpha\""
   assert_request "pair-next-seeded" "GET" "/api/pairs/next?wallet=${SEED_CURATOR_WALLET}&marketId=${SEED_MARKET_ID}" "200" "" "\"id\":${SEED_PAIR_ID}"
+  assert_request "pair-next-skipper-before" "GET" "/api/pairs/next?wallet=${SEED_SKIP_WALLET}&marketId=${SEED_MARKET_ID}" "200" "" "\"id\":${SEED_PAIR_ID}"
+  assert_request "pair-skip-seeded" "POST" "/api/pairs/${SEED_PAIR_ID}/skip" "204" \
+    "{\"wallet\":\"${SEED_SKIP_WALLET}\"}"
+  assert_request "pair-next-skipper-after" "GET" "/api/pairs/next?wallet=${SEED_SKIP_WALLET}&marketId=${SEED_MARKET_ID}" "404"
   assert_request "commit-seeded" "POST" "/api/pairs/${SEED_PAIR_ID}/commit" "201" \
     "{\"curatorWallet\":\"${SEED_CURATOR_WALLET}\",\"hash\":\"0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"stake\":1000,\"encryptedReveal\":\"smoke-encrypted\"}"
   assert_request "curator-seeded" "GET" "/api/curators/${SEED_CURATOR_WALLET}?marketId=${SEED_MARKET_ID}" "200" "" "\"wallet\":\"${SEED_CURATOR_WALLET}\""

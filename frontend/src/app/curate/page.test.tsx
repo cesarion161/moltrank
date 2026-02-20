@@ -273,7 +273,7 @@ describe('CuratePage', () => {
     })
   })
 
-  it('calls skipPair API when skipping', async () => {
+  it('calls skipPair API when skipping and loads next pair', async () => {
     mockGetNextPair.mockResolvedValueOnce(mockPair).mockResolvedValueOnce(mockPair)
     mockGetActiveRound.mockResolvedValue(mockRound)
     mockSkipPair.mockResolvedValue({ success: true })
@@ -288,6 +288,10 @@ describe('CuratePage', () => {
 
     await waitFor(() => {
       expect(mockSkipPair).toHaveBeenCalledWith(1, MOCK_WALLET)
+    })
+
+    await waitFor(() => {
+      expect(mockGetNextPair).toHaveBeenCalledTimes(2)
     })
   })
 
