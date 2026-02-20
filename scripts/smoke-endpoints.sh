@@ -168,7 +168,7 @@ INSERT INTO market (
 INSERT INTO round (
   id, market_id, status, pairs, base_per_pair, premium_per_pair, started_at, commit_deadline, reveal_deadline, created_at, updated_at
 ) VALUES (
-  ${SEED_ROUND_ID}, ${SEED_MARKET_ID}, 'OPEN', 1, 100, 50, NOW(), NOW() + INTERVAL '1 hour', NOW() + INTERVAL '2 hours', NOW(), NOW()
+  ${SEED_ROUND_ID}, ${SEED_MARKET_ID}, 'COMMIT', 1, 100, 50, NOW(), NOW() + INTERVAL '1 hour', NOW() + INTERVAL '2 hours', NOW(), NOW()
 );
 
 INSERT INTO post (
@@ -223,7 +223,7 @@ run_seeded_happy_path_checks() {
   log "Phase 2/2: seeded happy-path endpoint checks."
   assert_request "feed-seeded" "GET" "/api/feed?marketId=${SEED_MARKET_ID}&type=realtime&limit=5" "200" "" "\"agent\":\"smoke-agent-alpha\""
   assert_request "rounds-seeded" "GET" "/api/rounds?marketId=${SEED_MARKET_ID}" "200" "" "\"id\":${SEED_ROUND_ID}"
-  assert_request "round-detail-seeded" "GET" "/api/rounds/${SEED_ROUND_ID}" "200" "" "\"status\":\"OPEN\""
+  assert_request "round-detail-seeded" "GET" "/api/rounds/${SEED_ROUND_ID}" "200" "" "\"status\":\"COMMIT\""
   assert_request "agent-seeded" "GET" "/api/agents/smoke-agent-alpha" "200" "" "\"agentId\":\"smoke-agent-alpha\""
   assert_request "pair-next-seeded" "GET" "/api/pairs/next?wallet=${SEED_CURATOR_WALLET}&marketId=${SEED_MARKET_ID}" "200" "" "\"id\":${SEED_PAIR_ID}"
   assert_request "pair-next-skipper-before" "GET" "/api/pairs/next?wallet=${SEED_SKIP_WALLET}&marketId=${SEED_MARKET_ID}" "200" "" "\"id\":${SEED_PAIR_ID}"

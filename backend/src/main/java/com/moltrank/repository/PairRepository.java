@@ -1,6 +1,7 @@
 package com.moltrank.repository;
 
 import com.moltrank.model.Pair;
+import com.moltrank.model.RoundStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -17,7 +18,7 @@ public interface PairRepository extends JpaRepository<Pair, Integer> {
 
     @Query("SELECT p FROM Pair p " +
             "WHERE p.round.market.id = :marketId " +
-            "AND p.round.status = 'OPEN' " +
+            "AND p.round.status IN :statuses " +
             "AND NOT EXISTS (" +
             "  SELECT c FROM Commitment c " +
             "  WHERE c.pair.id = p.id " +
@@ -30,5 +31,6 @@ public interface PairRepository extends JpaRepository<Pair, Integer> {
             ") " +
             "ORDER BY p.id ASC")
     Optional<Pair> findNextPairForCurator(@Param("wallet") String wallet,
-                                          @Param("marketId") Integer marketId);
+                                          @Param("marketId") Integer marketId,
+                                          @Param("statuses") List<RoundStatus> statuses);
 }

@@ -4,6 +4,7 @@ import com.moltrank.model.*;
 import com.moltrank.repository.CommitmentRepository;
 import com.moltrank.repository.IdentityRepository;
 import com.moltrank.repository.PairRepository;
+import com.moltrank.service.PairSelectionService;
 import com.moltrank.service.PairSkipService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -36,6 +37,9 @@ class PairsControllerTest {
 
     @MockitoBean
     private PairRepository pairRepository;
+
+    @MockitoBean
+    private PairSelectionService pairSelectionService;
 
     @MockitoBean
     private CommitmentRepository commitmentRepository;
@@ -121,7 +125,8 @@ class PairsControllerTest {
     @Test
     void getNextPair_returnsPairForCurator() throws Exception {
         Pair pair = buildPair(false);
-        when(pairRepository.findNextPairForCurator(WALLET, 1))
+        pair.getRound().setStatus(RoundStatus.COMMIT);
+        when(pairSelectionService.findNextPairForCurator(WALLET, 1))
                 .thenReturn(Optional.of(pair));
 
         mockMvc.perform(get("/api/pairs/next")
@@ -139,7 +144,7 @@ class PairsControllerTest {
 
     @Test
     void getNextPair_returns404WhenNoPairsAvailable() throws Exception {
-        when(pairRepository.findNextPairForCurator(WALLET, 1))
+        when(pairSelectionService.findNextPairForCurator(WALLET, 1))
                 .thenReturn(Optional.empty());
 
         mockMvc.perform(get("/api/pairs/next")
@@ -287,7 +292,8 @@ class PairsControllerTest {
     @Test
     void getNextPair_handlesProxyLikeEntityGraphWithoutSerialization500() throws Exception {
         Pair pair = buildPair(true);
-        when(pairRepository.findNextPairForCurator(WALLET, 1))
+        pair.getRound().setStatus(RoundStatus.COMMIT);
+        when(pairSelectionService.findNextPairForCurator(WALLET, 1))
                 .thenReturn(Optional.of(pair));
 
         mockMvc.perform(get("/api/pairs/next")
@@ -296,6 +302,28 @@ class PairsControllerTest {
                 .andExpect(jsonPath("$.id").value(1))
                 .andExpect(jsonPath("$.postA.agent").value("agent-alpha"))
                 .andExpect(jsonPath("$.postA.market").doesNotExist());
+    }
+
+    @Test
+    void getNextPair_curateFlowTracksRoundTransitions() throws Exception {
+        Pair pair = buildPair(false);
+        pair.getRound().setStatus(RoundStatus.COMMIT);
+
+        when(pairSelectionService.findNextPairForCurator(WALLET, 1))
+                .thenReturn(Optional.empty(), Optional.of(pair), Optional.empty());
+
+        mockMvc.perform(get("/api/pairs/next")
+                        .param("wallet", WALLET))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/api/pairs/next")
+                        .param("wallet", WALLET))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1));
+
+        mockMvc.perform(get("/api/pairs/next")
+                        .param("wallet", WALLET))
+                .andExpect(status().isNotFound());
     }
 
     @Test

@@ -8,6 +8,7 @@ import com.moltrank.model.Pair;
 import com.moltrank.repository.CommitmentRepository;
 import com.moltrank.repository.IdentityRepository;
 import com.moltrank.repository.PairRepository;
+import com.moltrank.service.PairSelectionService;
 import com.moltrank.service.PairSkipService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -26,15 +27,18 @@ public class PairsController {
     private final CommitmentRepository commitmentRepository;
     private final IdentityRepository identityRepository;
     private final PairSkipService pairSkipService;
+    private final PairSelectionService pairSelectionService;
 
     public PairsController(PairRepository pairRepository,
                            CommitmentRepository commitmentRepository,
                            IdentityRepository identityRepository,
-                           PairSkipService pairSkipService) {
+                           PairSkipService pairSkipService,
+                           PairSelectionService pairSelectionService) {
         this.pairRepository = pairRepository;
         this.commitmentRepository = commitmentRepository;
         this.identityRepository = identityRepository;
         this.pairSkipService = pairSkipService;
+        this.pairSelectionService = pairSelectionService;
     }
 
     /**
@@ -50,7 +54,7 @@ public class PairsController {
             @RequestParam(defaultValue = "1") Integer marketId) {
 
         // Find first uncommitted pair for this curator
-        Pair nextPair = pairRepository.findNextPairForCurator(wallet, marketId)
+        Pair nextPair = pairSelectionService.findNextPairForCurator(wallet, marketId)
                 .orElse(null);
 
         if (nextPair == null) {

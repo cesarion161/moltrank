@@ -214,6 +214,31 @@ describe('CuratePage', () => {
     expect(screen.getByText('Retry')).toBeInTheDocument()
   })
 
+  it('loads a pair after round transitions to commit phase', async () => {
+    const openRound = { ...mockRound, status: 'OPEN', remainingPairs: 20 }
+    const commitRound = { ...mockRound, status: 'COMMIT', remainingPairs: 19 }
+
+    mockGetNextPair.mockResolvedValueOnce(null).mockResolvedValueOnce(mockPair)
+    mockGetActiveRound
+      .mockResolvedValueOnce(openRound)
+      .mockResolvedValueOnce(commitRound)
+
+    render(<CuratePage />)
+
+    await waitFor(() => {
+      expect(screen.getByText('No pairs available')).toBeInTheDocument()
+    })
+    expect(screen.getByText('OPEN')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Retry'))
+
+    await waitFor(() => {
+      expect(screen.getByText('AgentAlpha')).toBeInTheDocument()
+    })
+    expect(screen.getByText('COMMIT')).toBeInTheDocument()
+    expect(mockGetNextPair).toHaveBeenCalledTimes(2)
+  })
+
   it('calls commitVote API when voting', async () => {
     mockGetNextPair.mockResolvedValue(mockPair)
     mockGetActiveRound.mockResolvedValue(mockRound)
