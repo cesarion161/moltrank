@@ -4,7 +4,7 @@
   "private": true,
   "engines": {
     "node": ">=23 <24",
-    "npm": ">=11 <12"
+    "npm": ">=10 <12"
   },
   "scripts": {
     "dev": "next dev",

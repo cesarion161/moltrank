@@ -15,11 +15,12 @@ ELO-based social media ranking system on Solana.
 - Docker Engine + Docker Compose v2 (for local PostgreSQL).
 - Java 25 (the backend Gradle toolchain target).
 - Node.js 23.x for frontend development and tests.
-- npm 11+.
+- npm 10.x or 11.x.
 - Rust + Solana CLI + Anchor CLI `0.30.1` for on-chain work.
 - Python 3.11+ for simulation.
 
-Node version is pinned at the repo root with `.nvmrc`:
+Node version is pinned at the repo root with `.nvmrc`.
+Frontend has its own `.nvmrc`/`.node-version` so directory-level auto-switchers also resolve Node 23 when you `cd frontend`:
 
 ```bash
 nvm use

@@ -2,7 +2,6 @@ package com.moltrank.service;
 
 import com.moltrank.model.*;
 import com.moltrank.repository.MarketRepository;
-import com.moltrank.repository.PairRepository;
 import com.moltrank.repository.RoundRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,7 +29,6 @@ class RoundOrchestratorServiceTest {
 
     @Mock private RoundRepository roundRepository;
     @Mock private MarketRepository marketRepository;
-    @Mock private PairRepository pairRepository;
     @Mock private PairGenerationService pairGenerationService;
     @Mock private AutoRevealService autoRevealService;
 
@@ -44,6 +42,8 @@ class RoundOrchestratorServiceTest {
         ReflectionTestUtils.setField(orchestrator, "commitDurationMinutes", 5);
         ReflectionTestUtils.setField(orchestrator, "revealDurationMinutes", 5);
         ReflectionTestUtils.setField(orchestrator, "minCurators", 1);
+        ReflectionTestUtils.setField(orchestrator, "autoCreateEnabled", true);
+        ReflectionTestUtils.setField(orchestrator, "autoCreateOnStartup", true);
 
         market = new Market();
         market.setId(1);
@@ -139,6 +139,33 @@ class RoundOrchestratorServiceTest {
         verify(pairGenerationService).generatePairs(any());
     }
 
+    @Test
+    void onApplicationReady_runsAutoCreateWhenEnabled() {
+        when(marketRepository.findAll()).thenReturn(List.of(market));
+        when(roundRepository.findByMarketIdAndStatusIn(eq(1), any())).thenReturn(List.of());
+        when(roundRepository.save(any(Round.class))).thenAnswer(inv -> {
+            Round r = inv.getArgument(0);
+            r.setId(3);
+            return r;
+        });
+        when(pairGenerationService.generatePairs(any())).thenReturn(List.of(new Pair()));
+
+        orchestrator.onApplicationReady();
+
+        verify(marketRepository).findAll();
+        verify(pairGenerationService).generatePairs(any());
+    }
+
+    @Test
+    void onApplicationReady_skipsAutoCreateWhenDisabled() {
+        ReflectionTestUtils.setField(orchestrator, "autoCreateEnabled", false);
+
+        orchestrator.onApplicationReady();
+
+        verifyNoInteractions(marketRepository);
+        verifyNoInteractions(pairGenerationService);
+    }
+
     // ========================================================================
     // createNewRound guard conditions
     // ========================================================================
@@ -181,7 +208,7 @@ class RoundOrchestratorServiceTest {
 
         orchestrator.createNewRound(market);
 
-        Round saved = roundCaptor.getAllValues().get(0);
+        Round saved = roundCaptor.getAllValues().getFirst();
         assertNotNull(saved.getStartedAt());
         assertNotNull(saved.getCommitDeadline());
         assertNotNull(saved.getRevealDeadline());
@@ -310,6 +337,19 @@ class RoundOrchestratorServiceTest {
 
         // Should not throw - errors are caught per-market
         assertDoesNotThrow(() -> orchestrator.processRoundTransitions());
+    }
+
+    @Test
+    void processRoundTransitions_skipsAutoCreateWhenDisabled() {
+        ReflectionTestUtils.setField(orchestrator, "autoCreateEnabled", false);
+        when(roundRepository.findByStatus(RoundStatus.OPEN)).thenReturn(List.of());
+        when(roundRepository.findByStatus(RoundStatus.COMMIT)).thenReturn(List.of());
+        when(roundRepository.findByStatus(RoundStatus.REVEAL)).thenReturn(List.of());
+
+        orchestrator.processRoundTransitions();
+
+        verifyNoInteractions(marketRepository);
+        verifyNoInteractions(pairGenerationService);
     }
 
     // ========================================================================

@@ -2,11 +2,13 @@ package com.moltrank.service;
 
 import com.moltrank.model.*;
 import com.moltrank.repository.MarketRepository;
-import com.moltrank.repository.PairRepository;
 import com.moltrank.repository.RoundRepository;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,11 +19,11 @@ import java.util.List;
 /**
  * Round orchestration service implementing the round state machine.
  * Manages round lifecycle: OPEN -> COMMIT -> REVEAL -> SETTLING -> SETTLED
- *
  * Uses Spring Scheduler for automatic state transitions in MVP/demo mode.
  * Future: Event-driven fallback listening to on-chain events.
  */
 @Service
+@RequiredArgsConstructor
 public class RoundOrchestratorService {
 
     private static final Logger log = LoggerFactory.getLogger(RoundOrchestratorService.class);
@@ -35,34 +37,43 @@ public class RoundOrchestratorService {
     @Value("${moltrank.round.min-curators:1}")
     private int minCurators;
 
+    @Value("${moltrank.round.auto-create-enabled:true}")
+    private boolean autoCreateEnabled;
+
+    @Value("${moltrank.round.auto-create-on-startup:true}")
+    private boolean autoCreateOnStartup;
+
     private final RoundRepository roundRepository;
     private final MarketRepository marketRepository;
-    private final PairRepository pairRepository;
     private final PairGenerationService pairGenerationService;
     private final AutoRevealService autoRevealService;
 
-    public RoundOrchestratorService(
-            RoundRepository roundRepository,
-            MarketRepository marketRepository,
-            PairRepository pairRepository,
-            PairGenerationService pairGenerationService,
-            AutoRevealService autoRevealService) {
-        this.roundRepository = roundRepository;
-        this.marketRepository = marketRepository;
-        this.pairRepository = pairRepository;
-        this.pairGenerationService = pairGenerationService;
-        this.autoRevealService = autoRevealService;
-    }
-
     private static final List<RoundStatus> ACTIVE_STATUSES = List.of(
             RoundStatus.OPEN, RoundStatus.COMMIT, RoundStatus.REVEAL, RoundStatus.SETTLING);
+
+    /**
+     * Runs round auto-creation once at startup so eligible markets do not wait
+     * for the first scheduler tick.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    @Transactional
+    public void onApplicationReady() {
+        if (!autoCreateEnabled || !autoCreateOnStartup) {
+            log.debug("Round auto-create on startup skipped (enabled={}, runOnStartup={})",
+                    autoCreateEnabled, autoCreateOnStartup);
+            return;
+        }
+        checkAndCreateRounds();
+    }
 
     /**
      * Scheduled task: process state transitions and create new rounds every minute.
      * Checks all active rounds, transitions them based on deadlines, and creates
      * new rounds for eligible markets.
      */
-    @Scheduled(fixedRate = 60000) // Run every 60 seconds
+    @Scheduled(
+            fixedRateString = "${moltrank.round.interval-ms:60000}",
+            initialDelayString = "${moltrank.round.initial-delay-ms:60000}")
     @Transactional
     public void processRoundTransitions() {
         log.debug("Processing round state transitions");
@@ -96,7 +107,11 @@ public class RoundOrchestratorService {
         }
 
         // Auto-create new rounds for eligible markets
-        checkAndCreateRounds();
+        if (autoCreateEnabled) {
+            checkAndCreateRounds();
+        } else {
+            log.debug("Round auto-create skipped by config (enabled={})", autoCreateEnabled);
+        }
     }
 
     /**
@@ -104,6 +119,7 @@ public class RoundOrchestratorService {
      * - No active round (OPEN, COMMIT, REVEAL, or SETTLING) for the market
      * - Sufficient subscribers (>= minCurators)
      */
+    @Transactional
     void checkAndCreateRounds() {
         List<Market> markets = marketRepository.findAll();
         for (Market market : markets) {
