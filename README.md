@@ -13,7 +13,7 @@ ELO-based social media ranking system on Solana.
 ## Required Versions
 
 - Docker Engine + Docker Compose v2 (for local PostgreSQL).
-- Java 23 (the backend Gradle toolchain target).
+- Java 25 (the backend Gradle toolchain target).
 - Node.js 23.x for frontend development and tests.
 - npm 11+.
 - Rust + Solana CLI + Anchor CLI `0.30.1` for on-chain work.
@@ -66,12 +66,14 @@ Postgres defaults used by backend:
 - Password: `changeme`
 - Port: `5432`
 
-### 2) Run backend tests
+### 2) Run backend verification (tests + static analysis)
 
 ```bash
 cd backend
-./gradlew test
+./gradlew check
 ```
+
+`check` runs JUnit tests and PMD static analysis.
 
 ### 3) Run frontend tests (Node 23 required)
 
@@ -89,6 +91,7 @@ DB_PASSWORD=changeme ./gradlew bootRun
 ```
 
 On startup, backend bootstrap creates the default MVP market (`General`, `submolt_id=general`) if it is missing.
+The ingestion orchestrator then pulls topic-scoped posts on startup and continues on a fixed schedule (defaults: 100 posts/market every 5 minutes).
 
 ### 5) Run backend endpoint smoke suite
 

@@ -51,3 +51,7 @@ simulation/.pytest_cache/
 *.swo
 *~
 simulation/output/
+
+# Intellij IDEA
+.idea/**
+**/.idea/**

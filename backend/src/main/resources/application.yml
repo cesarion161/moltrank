@@ -46,5 +46,11 @@ solana:
 
 moltrank:
   pairs-per-subscriber: 5  # K value for demand-gated pair generation formula
+  ingestion:
+    enabled: true
+    run-on-startup: true
+    fetch-limit: 100
+    initial-delay-ms: 60000
+    interval-ms: 300000
   moltbook:
     # api-url: https://api.moltbook.com  # Uncomment when real Moltbook API is available

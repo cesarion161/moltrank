@@ -9,7 +9,7 @@ import com.moltrank.service.PairSkipService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -310,7 +310,9 @@ class PairsControllerTest {
         pair.getRound().setStatus(RoundStatus.COMMIT);
 
         when(pairSelectionService.findNextPairForCurator(WALLET, 1))
-                .thenReturn(Optional.empty(), Optional.of(pair), Optional.empty());
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(pair))
+                .thenReturn(Optional.empty());
 
         mockMvc.perform(get("/api/pairs/next")
                         .param("wallet", WALLET))

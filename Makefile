@@ -1,4 +1,4 @@
-.PHONY: dev db-up db-down backend-test frontend-test anchor-test smoke-endpoints
+.PHONY: dev db-up db-down backend-test backend-verify frontend-test anchor-test smoke-endpoints
 
 dev:
 	./scripts/dev-start.sh
@@ -11,6 +11,9 @@ db-down:
 
 backend-test:
 	cd backend && ./gradlew test
+
+backend-verify:
+	cd backend && ./gradlew check
 
 frontend-test:
 	cd frontend && npm test
