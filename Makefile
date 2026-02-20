@@ -1,4 +1,4 @@
-.PHONY: dev db-up db-down backend-test frontend-test anchor-test
+.PHONY: dev db-up db-down backend-test frontend-test anchor-test smoke-endpoints
 
 dev:
 	./scripts/dev-start.sh
@@ -17,3 +17,6 @@ frontend-test:
 
 anchor-test:
 	cd anchor && anchor build && anchor test
+
+smoke-endpoints:
+	./scripts/smoke-endpoints.sh

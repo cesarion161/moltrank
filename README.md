@@ -89,7 +89,27 @@ cd backend
 DB_PASSWORD=changeme ./gradlew bootRun
 ```
 
-### 5) Run frontend locally
+### 5) Run backend endpoint smoke suite
+
+With backend running, execute:
+
+```bash
+make smoke-endpoints
+```
+
+Optional backend URL override:
+
+```bash
+BASE_URL=http://localhost:18080 ./scripts/smoke-endpoints.sh
+```
+
+Smoke suite expectations:
+
+- Empty-state checks: `200` on list/health endpoints, expected `404`/`400` on missing-resource and invalid-market cases.
+- Seeded happy-path checks: deterministic seed data is inserted, then all REST routes are exercised with expected success statuses (`200/201/204` as appropriate).
+- Any unexpected `5xx` fails the run immediately in the summary.
+
+### 6) Run frontend locally
 
 ```bash
 cd frontend
@@ -97,7 +117,7 @@ nvm use 22
 npm run dev
 ```
 
-### 6) Anchor test flow
+### 7) Anchor test flow
 
 ```bash
 cd anchor
