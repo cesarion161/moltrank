@@ -35,6 +35,10 @@ import java.util.List;
 public class AutoRevealService {
 
     private static final Logger log = LoggerFactory.getLogger(AutoRevealService.class);
+    private static final String FAILURE_HASH_MISMATCH = "HASH_MISMATCH";
+    private static final String FAILURE_SOLANA_SUBMISSION = "SOLANA_SUBMISSION_FAILED";
+    private static final String FAILURE_INVALID_REVEAL_PAYLOAD = "INVALID_REVEAL_PAYLOAD";
+    private static final String FAILURE_UNEXPECTED_ERROR = "UNEXPECTED_ERROR";
 
     @Value("${moltrank.reveal.grace-period-minutes:30}")
     private int gracePeriodMinutes;
@@ -83,16 +87,20 @@ public class AutoRevealService {
 
             for (Commitment commitment : commitments) {
                 try {
-                    boolean revealed = revealCommitment(commitment);
-                    if (revealed) {
+                    RevealAttemptResult revealResult = revealCommitment(commitment);
+                    if (revealResult.success()) {
                         successfulReveals++;
                     } else {
                         failedReveals++;
+                        markAutoRevealFailure(commitment, revealResult.failureReason());
+                        sendManualRevealNotification(commitment);
                     }
                 } catch (Exception e) {
                     log.error("Failed to auto-reveal commitment {} for curator {}",
                             commitment.getId(), commitment.getCuratorWallet(), e);
                     failedReveals++;
+
+                    markAutoRevealFailure(commitment, FAILURE_UNEXPECTED_ERROR);
 
                     // Send push notification for manual reveal opportunity
                     sendManualRevealNotification(commitment);
@@ -108,9 +116,9 @@ public class AutoRevealService {
      * Reveals a single commitment by decrypting and submitting to Solana.
      *
      * @param commitment The commitment to reveal
-     * @return true if successful, false otherwise
+     * @return reveal outcome with success flag and failure reason (if any)
      */
-    private boolean revealCommitment(Commitment commitment) {
+    private RevealAttemptResult revealCommitment(Commitment commitment) {
         log.debug("Auto-revealing commitment {} for curator {}",
                 commitment.getId(), commitment.getCuratorWallet());
 
@@ -120,7 +128,7 @@ public class AutoRevealService {
             // Verify the commitment hash matches
             if (!verifyCommitmentHash(commitment, payload)) {
                 log.error("Commitment hash mismatch for commitment {}", commitment.getId());
-                return false;
+                return RevealAttemptResult.failed(FAILURE_HASH_MISMATCH);
             }
 
             // Submit reveal transaction to Solana (with retries)
@@ -132,20 +140,33 @@ public class AutoRevealService {
                 commitment.setChoice(payload.choice);
                 commitment.setNonce(payload.nonceHex);
                 commitment.setRevealedAt(OffsetDateTime.now());
+                commitment.setAutoRevealFailed(false);
+                commitment.setAutoRevealFailureReason(null);
+                commitment.setAutoRevealFailedAt(null);
                 commitmentRepository.save(commitment);
 
                 log.info("Successfully revealed commitment {} with choice {}",
                         commitment.getId(), payload.choice);
-                return true;
+                return RevealAttemptResult.succeeded();
             } else {
                 log.error("Failed to submit reveal to Solana for commitment {}", commitment.getId());
-                return false;
+                return RevealAttemptResult.failed(FAILURE_SOLANA_SUBMISSION);
             }
 
+        } catch (IllegalArgumentException e) {
+            log.error("Reveal payload is invalid for commitment {}", commitment.getId(), e);
+            return RevealAttemptResult.failed(FAILURE_INVALID_REVEAL_PAYLOAD);
         } catch (Exception e) {
             log.error("Error during auto-reveal for commitment {}", commitment.getId(), e);
-            return false;
+            return RevealAttemptResult.failed(FAILURE_UNEXPECTED_ERROR);
         }
+    }
+
+    private void markAutoRevealFailure(Commitment commitment, String failureReason) {
+        commitment.setAutoRevealFailed(true);
+        commitment.setAutoRevealFailureReason(failureReason);
+        commitment.setAutoRevealFailedAt(OffsetDateTime.now());
+        commitmentRepository.save(commitment);
     }
 
     /**
@@ -345,6 +366,16 @@ public class AutoRevealService {
      * Internal class for parsed reveal payload.
      */
     private record RevealPayload(PairWinner choice, String nonceHex, byte[] nonceBytes, byte[] rawPayload) {
+    }
+
+    private record RevealAttemptResult(boolean success, String failureReason) {
+        private static RevealAttemptResult succeeded() {
+            return new RevealAttemptResult(true, null);
+        }
+
+        private static RevealAttemptResult failed(String failureReason) {
+            return new RevealAttemptResult(false, failureReason);
+        }
     }
 
     private static byte[] parseHex(String value) {

@@ -19,10 +19,11 @@ import java.util.Base64;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -88,11 +89,14 @@ class AutoRevealServiceTest {
         assertTrue(saved.getRevealed());
         assertEquals(PairWinner.B, saved.getChoice());
         assertEquals("f1e2d3c4b5a697887766554433221100ffeeddccbbaa99887766554433221100", saved.getNonce());
+        assertFalse(saved.getAutoRevealFailed());
+        assertNull(saved.getAutoRevealFailureReason());
+        assertNull(saved.getAutoRevealFailedAt());
         assertNotNull(saved.getRevealedAt());
     }
 
     @Test
-    void autoRevealCommitments_rejectsRevealWhenHashDoesNotMatch() {
+    void autoRevealCommitments_marksFailureWhenHashDoesNotMatch() {
         configureRetries();
 
         Round round = new Round();
@@ -117,10 +121,19 @@ class AutoRevealServiceTest {
 
         when(pairRepository.findByRoundId(round.getId())).thenReturn(List.of(pair));
         when(commitmentRepository.findByPairIdAndRevealed(pair.getId(), false)).thenReturn(List.of(commitment));
+        when(commitmentRepository.save(any(Commitment.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         autoRevealService.autoRevealCommitments(round);
 
-        verify(commitmentRepository, never()).save(any(Commitment.class));
+        ArgumentCaptor<Commitment> captor = ArgumentCaptor.forClass(Commitment.class);
+        verify(commitmentRepository).save(captor.capture());
+        Commitment saved = captor.getValue();
+        assertFalse(saved.getRevealed());
+        assertTrue(saved.getAutoRevealFailed());
+        assertEquals("HASH_MISMATCH", saved.getAutoRevealFailureReason());
+        assertNotNull(saved.getAutoRevealFailedAt());
+        assertNull(saved.getChoice());
+        assertNull(saved.getNonce());
     }
 
     private static byte[] parseHex(String value) {

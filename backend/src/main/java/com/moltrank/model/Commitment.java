@@ -1,11 +1,15 @@
 package com.moltrank.model;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
 
+@Setter
+@Getter
 @Entity
 @Table(name = "commitment")
 public class Commitment {
@@ -46,91 +50,13 @@ public class Commitment {
     @Column(name = "revealed_at")
     private OffsetDateTime revealedAt;
 
-    public Integer getId() {
-        return id;
-    }
+    @Column(name = "auto_reveal_failed", nullable = false)
+    private Boolean autoRevealFailed = false;
 
-    public void setId(Integer id) {
-        this.id = id;
-    }
+    @Column(name = "auto_reveal_failure_reason", length = 64)
+    private String autoRevealFailureReason;
 
-    public Pair getPair() {
-        return pair;
-    }
+    @Column(name = "auto_reveal_failed_at")
+    private OffsetDateTime autoRevealFailedAt;
 
-    public void setPair(Pair pair) {
-        this.pair = pair;
-    }
-
-    public String getCuratorWallet() {
-        return curatorWallet;
-    }
-
-    public void setCuratorWallet(String curatorWallet) {
-        this.curatorWallet = curatorWallet;
-    }
-
-    public String getHash() {
-        return hash;
-    }
-
-    public void setHash(String hash) {
-        this.hash = hash;
-    }
-
-    public Long getStake() {
-        return stake;
-    }
-
-    public void setStake(Long stake) {
-        this.stake = stake;
-    }
-
-    public String getEncryptedReveal() {
-        return encryptedReveal;
-    }
-
-    public void setEncryptedReveal(String encryptedReveal) {
-        this.encryptedReveal = encryptedReveal;
-    }
-
-    public Boolean getRevealed() {
-        return revealed;
-    }
-
-    public void setRevealed(Boolean revealed) {
-        this.revealed = revealed;
-    }
-
-    public PairWinner getChoice() {
-        return choice;
-    }
-
-    public void setChoice(PairWinner choice) {
-        this.choice = choice;
-    }
-
-    public String getNonce() {
-        return nonce;
-    }
-
-    public void setNonce(String nonce) {
-        this.nonce = nonce;
-    }
-
-    public OffsetDateTime getCommittedAt() {
-        return committedAt;
-    }
-
-    public void setCommittedAt(OffsetDateTime committedAt) {
-        this.committedAt = committedAt;
-    }
-
-    public OffsetDateTime getRevealedAt() {
-        return revealedAt;
-    }
-
-    public void setRevealedAt(OffsetDateTime revealedAt) {
-        this.revealedAt = revealedAt;
-    }
 }
