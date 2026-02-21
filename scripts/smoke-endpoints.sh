@@ -11,7 +11,7 @@ SEED_POST_B_ID=910302
 SEED_PAIR_ID=910401
 SEED_IDENTITY_ID=910501
 SEED_GOLDEN_SET_ID=910601
-SEED_CURATOR_WALLET="smoke-curator-wallet-910101"
+SEED_CURATOR_WALLET="9C6hybhQ6Aycep9jaUnP6uL9ZYvDjUp1aSkFWPUFJtpj"
 SEED_SKIP_WALLET="smoke-skip-wallet-910102"
 SEED_SKIP_IDENTITY_ID=910502
 SEED_READER_WALLET="smoke-reader-wallet-910101"
@@ -19,6 +19,9 @@ MISSING_WALLET="smoke-missing-wallet-910101"
 MISSING_AGENT="smoke-missing-agent-910101"
 EMPTY_LINK_WALLET="smoke-empty-$(date +%s)"
 BOOTSTRAP_MARKET_READER_WALLET="smoke-bootstrap-reader-910101"
+SMOKE_SIGNING_SEED_HEX="0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+SMOKE_REQUEST_NONCE_HEX="00112233445566778899aabbccddeeff"
+SMOKE_REVEAL_NONCE_HEX="00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
 
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -134,6 +137,116 @@ assert_request() {
   record_pass "${label}" "${method}" "${path}" "${RESPONSE_CODE}"
 }
 
+db_scalar() {
+  local sql="$1"
+  (
+    cd "${ROOT_DIR}"
+    docker compose exec -T postgres psql -U moltrank -d moltrank -At -c "${sql}"
+  ) | tr -d '[:space:]'
+}
+
+get_market_subscribers() {
+  local market_id="$1"
+  db_scalar "SELECT subscribers FROM market WHERE id = ${market_id};"
+}
+
+get_market_revenue() {
+  local market_id="$1"
+  db_scalar "SELECT subscription_revenue FROM market WHERE id = ${market_id};"
+}
+
+get_pool_balance() {
+  db_scalar "SELECT balance FROM global_pool WHERE id = 1;"
+}
+
+assert_db_delta() {
+  local label="$1"
+  local before="$2"
+  local after="$3"
+  local expected_delta="$4"
+
+  if ! [[ "${before}" =~ ^-?[0-9]+$ && "${after}" =~ ^-?[0-9]+$ ]]; then
+    record_fail "${label}" "DB" "delta-check" "${expected_delta}" "invalid" "before=${before}, after=${after}"
+    return 0
+  fi
+
+  local actual_delta
+  actual_delta=$((after - before))
+  if [[ "${actual_delta}" == "${expected_delta}" ]]; then
+    record_pass "${label}" "DB" "delta-check" "${actual_delta}"
+  else
+    record_fail "${label}" "DB" "delta-check" "${expected_delta}" "${actual_delta}" "before=${before}, after=${after}"
+  fi
+}
+
+build_signed_commit_payload() {
+  local pair_id="$1"
+  local stake_amount="$2"
+  local choice="$3"
+
+  source "${HOME}/.nvm/nvm.sh"
+  (
+    cd "${ROOT_DIR}/frontend"
+    nvm use >/dev/null
+    node --input-type=module - "${pair_id}" "${stake_amount}" "${choice}" "${SMOKE_REQUEST_NONCE_HEX}" "${SMOKE_REVEAL_NONCE_HEX}" "${SMOKE_SIGNING_SEED_HEX}" <<'NODE'
+import crypto from 'node:crypto';
+import { Keypair } from '@solana/web3.js';
+import { ed25519 } from '@noble/curves/ed25519';
+import { keccak_256 } from '@noble/hashes/sha3.js';
+import { sha256 } from '@noble/hashes/sha2.js';
+
+const [pairIdArg, stakeArg, choice, requestNonceHex, revealNonceHex, seedHex] = process.argv.slice(2);
+
+const pairId = Number(pairIdArg);
+const stakeAmount = Number(stakeArg);
+const signedAt = Math.floor(Date.now() / 1000);
+
+const seed = Buffer.from(seedHex, 'hex');
+const keypair = Keypair.fromSeed(seed);
+const wallet = keypair.publicKey.toBase58();
+
+const choiceByte = choice === 'A' ? 0 : 1;
+const revealNonce = Buffer.from(revealNonceHex, 'hex');
+const pairIdBytes = Buffer.alloc(4);
+pairIdBytes.writeUInt32LE(pairId);
+const stakeBytes = Buffer.alloc(8);
+stakeBytes.writeBigUInt64LE(BigInt(stakeAmount));
+
+const preimage = Buffer.concat([
+  Buffer.from(keypair.publicKey.toBytes()),
+  pairIdBytes,
+  Buffer.from([choiceByte]),
+  stakeBytes,
+  revealNonce,
+]);
+const commitmentHash = `0x${Buffer.from(keccak_256(preimage)).toString('hex')}`;
+
+const authMessage = `moltrank-commit-v1|wallet=${wallet}|pairId=${pairId}|hash=${commitmentHash}|stake=${stakeAmount}|signedAt=${signedAt}|nonce=${requestNonceHex}`;
+const authBytes = Buffer.from(authMessage, 'utf8');
+const signature = Buffer.from(ed25519.sign(authBytes, seed));
+
+const revealPayload = Buffer.concat([Buffer.from([choiceByte]), revealNonce]);
+const revealKey = Buffer.from(sha256(signature));
+const iv = Buffer.from('0102030405060708090a0b0c', 'hex');
+const cipher = crypto.createCipheriv('aes-256-gcm', revealKey, iv, { authTagLength: 16 });
+cipher.setAAD(authBytes);
+const encryptedCore = Buffer.concat([cipher.update(revealPayload), cipher.final()]);
+const encryptedReveal = Buffer.concat([encryptedCore, cipher.getAuthTag()]);
+
+process.stdout.write(JSON.stringify({
+  wallet,
+  commitmentHash,
+  stakeAmount,
+  encryptedReveal: encryptedReveal.toString('base64'),
+  revealIv: iv.toString('base64'),
+  signature: signature.toString('base64'),
+  signedAt,
+  requestNonce: requestNonceHex,
+}));
+NODE
+  )
+}
+
 seed_smoke_data() {
   log "Seeding deterministic smoke data in local Postgres."
   (
@@ -217,8 +330,29 @@ run_empty_state_checks() {
   assert_request "leaderboard-empty" "GET" "/api/leaderboard?marketId=1&limit=10" "200"
   assert_request "identity-link-create" "POST" "/api/identity/link" "201" \
     "{\"wallet\":\"${EMPTY_LINK_WALLET}\",\"xAccount\":\"smoke_empty\",\"verified\":false}"
+
+  local bootstrap_subscribers_before
+  local bootstrap_revenue_before
+  local bootstrap_pool_before
+  bootstrap_subscribers_before="$(get_market_subscribers 1)"
+  bootstrap_revenue_before="$(get_market_revenue 1)"
+  bootstrap_pool_before="$(get_pool_balance)"
+
   assert_request "subscribe-bootstrap-market" "POST" "/api/subscribe" "201" \
-    "{\"readerWallet\":\"${BOOTSTRAP_MARKET_READER_WALLET}\",\"market\":{\"id\":1},\"amount\":1000,\"type\":\"FREE_DELAY\"}"
+    "{\"readerWallet\":\"${BOOTSTRAP_MARKET_READER_WALLET}\",\"market\":{\"id\":1},\"amount\":1000,\"type\":\"FREE_DELAY\"}" \
+    "\"poolContribution\":0"
+
+  local bootstrap_subscribers_after
+  local bootstrap_revenue_after
+  local bootstrap_pool_after
+  bootstrap_subscribers_after="$(get_market_subscribers 1)"
+  bootstrap_revenue_after="$(get_market_revenue 1)"
+  bootstrap_pool_after="$(get_pool_balance)"
+
+  assert_db_delta "subscribe-bootstrap-subscribers" "${bootstrap_subscribers_before}" "${bootstrap_subscribers_after}" 1
+  assert_db_delta "subscribe-bootstrap-revenue" "${bootstrap_revenue_before}" "${bootstrap_revenue_after}" 0
+  assert_db_delta "subscribe-bootstrap-pool" "${bootstrap_pool_before}" "${bootstrap_pool_after}" 0
+
   assert_request "subscribe-bad-market" "POST" "/api/subscribe" "400" \
     '{"readerWallet":"smoke-reader-wallet-missing","market":{"id":999999},"amount":1000,"type":"REALTIME"}'
 }
@@ -234,12 +368,36 @@ run_seeded_happy_path_checks() {
   assert_request "pair-skip-seeded" "POST" "/api/pairs/${SEED_PAIR_ID}/skip" "204" \
     "{\"wallet\":\"${SEED_SKIP_WALLET}\"}"
   assert_request "pair-next-skipper-after" "GET" "/api/pairs/next?wallet=${SEED_SKIP_WALLET}&marketId=${SEED_MARKET_ID}" "404"
+
+  local signed_commit_payload
+  signed_commit_payload="$(build_signed_commit_payload "${SEED_PAIR_ID}" "1000" "A")"
   assert_request "commit-seeded" "POST" "/api/pairs/${SEED_PAIR_ID}/commit" "201" \
-    "{\"curatorWallet\":\"${SEED_CURATOR_WALLET}\",\"hash\":\"0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"stake\":1000,\"encryptedReveal\":\"smoke-encrypted\"}"
+    "${signed_commit_payload}"
   assert_request "curator-seeded" "GET" "/api/curators/${SEED_CURATOR_WALLET}?marketId=${SEED_MARKET_ID}" "200" "" "\"wallet\":\"${SEED_CURATOR_WALLET}\""
   assert_request "leaderboard-seeded" "GET" "/api/leaderboard?marketId=${SEED_MARKET_ID}&limit=10" "200" "" "\"wallet\":\"${SEED_CURATOR_WALLET}\""
+
+  local seeded_subscribers_before
+  local seeded_revenue_before
+  local seeded_pool_before
+  seeded_subscribers_before="$(get_market_subscribers "${SEED_MARKET_ID}")"
+  seeded_revenue_before="$(get_market_revenue "${SEED_MARKET_ID}")"
+  seeded_pool_before="$(get_pool_balance)"
+
   assert_request "subscribe-seeded" "POST" "/api/subscribe" "201" \
-    "{\"readerWallet\":\"${SEED_READER_WALLET}\",\"market\":{\"id\":${SEED_MARKET_ID}},\"amount\":5000,\"type\":\"REALTIME\",\"round\":{\"id\":${SEED_ROUND_ID}}}"
+    "{\"readerWallet\":\"${SEED_READER_WALLET}\",\"market\":{\"id\":${SEED_MARKET_ID}},\"amount\":5000,\"type\":\"REALTIME\",\"round\":{\"id\":${SEED_ROUND_ID}}}" \
+    "\"poolContribution\":5000"
+
+  local seeded_subscribers_after
+  local seeded_revenue_after
+  local seeded_pool_after
+  seeded_subscribers_after="$(get_market_subscribers "${SEED_MARKET_ID}")"
+  seeded_revenue_after="$(get_market_revenue "${SEED_MARKET_ID}")"
+  seeded_pool_after="$(get_pool_balance)"
+
+  assert_db_delta "subscribe-seeded-subscribers" "${seeded_subscribers_before}" "${seeded_subscribers_after}" 1
+  assert_db_delta "subscribe-seeded-revenue" "${seeded_revenue_before}" "${seeded_revenue_after}" 5000
+  assert_db_delta "subscribe-seeded-pool" "${seeded_pool_before}" "${seeded_pool_after}" 5000
+
   assert_request "golden-list-seeded" "GET" "/api/golden-set" "200" "" "\"id\":${SEED_GOLDEN_SET_ID}"
   assert_request "golden-delete-seeded" "DELETE" "/api/golden-set/${SEED_GOLDEN_SET_ID}" "204"
   assert_request "golden-create-seeded" "POST" "/api/golden-set" "201" \

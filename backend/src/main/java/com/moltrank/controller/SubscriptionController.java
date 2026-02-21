@@ -1,71 +1,41 @@
 package com.moltrank.controller;
 
-import com.moltrank.model.Market;
-import com.moltrank.model.Round;
-import com.moltrank.model.Subscription;
-import com.moltrank.repository.MarketRepository;
-import com.moltrank.repository.RoundRepository;
-import com.moltrank.repository.SubscriptionRepository;
+import com.moltrank.controller.dto.CreateSubscriptionRequest;
+import com.moltrank.controller.dto.SubscriptionResponse;
+import com.moltrank.service.SubscriptionService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-import java.time.OffsetDateTime;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 /**
  * REST API for subscriptions.
  */
 @RestController
 @RequestMapping("/api")
+@RequiredArgsConstructor
 public class SubscriptionController {
 
-    private final SubscriptionRepository subscriptionRepository;
-    private final MarketRepository marketRepository;
-    private final RoundRepository roundRepository;
-
-    public SubscriptionController(SubscriptionRepository subscriptionRepository,
-                                  MarketRepository marketRepository,
-                                  RoundRepository roundRepository) {
-        this.subscriptionRepository = subscriptionRepository;
-        this.marketRepository = marketRepository;
-        this.roundRepository = roundRepository;
-    }
+    private final SubscriptionService subscriptionService;
 
     /**
      * Create subscription.
      *
-     * @param subscription The subscription request
+     * @param request The subscription request
      * @return Created subscription
      */
     @PostMapping("/subscribe")
-    public ResponseEntity<Subscription> createSubscription(@RequestBody Subscription subscription) {
-        // Fetch market
-        Market market = marketRepository.findById(subscription.getMarket().getId())
-                .orElse(null);
-
-        if (market == null) {
+    public ResponseEntity<SubscriptionResponse> createSubscription(@RequestBody CreateSubscriptionRequest request) {
+        try {
+            SubscriptionService.SubscriptionCreationResult result =
+                    subscriptionService.createSubscription(request);
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(SubscriptionResponse.from(result));
+        } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().build();
         }
-
-        subscription.setMarket(market);
-
-        // Fetch round if specified
-        if (subscription.getRound() != null && subscription.getRound().getId() != null) {
-            Round round = roundRepository.findById(subscription.getRound().getId())
-                    .orElse(null);
-            subscription.setRound(round);
-        }
-
-        // Set timestamps
-        subscription.setSubscribedAt(OffsetDateTime.now());
-
-        // Calculate expiration based on subscription type
-        // For now, set a simple 30-day expiration
-        // In production, this would vary by subscription type and payment amount
-        subscription.setExpiresAt(OffsetDateTime.now().plusDays(30));
-
-        Subscription created = subscriptionRepository.save(subscription);
-
-        return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 }

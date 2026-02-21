@@ -23,7 +23,7 @@ public class CommitRevealEnvelopeCryptoService {
     private static final int GCM_TAG_BITS = 128;
 
     private final CommitSecurityProperties commitSecurityProperties;
-    private final ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper();
     private final SecureRandom secureRandom = new SecureRandom();
 
     public String encryptForStorage(byte[] canonicalRevealPayload) {

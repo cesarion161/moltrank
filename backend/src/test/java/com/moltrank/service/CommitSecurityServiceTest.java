@@ -1,6 +1,5 @@
 package com.moltrank.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.moltrank.controller.dto.CommitPairRequest;
 import com.moltrank.model.PairWinner;
 import com.moltrank.repository.CommitRequestReplayGuardRepository;
@@ -55,7 +54,7 @@ class CommitSecurityServiceTest {
         properties.setAllowLegacyUnsignedCommits(false);
         properties.setAllowLegacyRevealDecode(true);
 
-        revealEnvelopeCryptoService = new CommitRevealEnvelopeCryptoService(properties, new ObjectMapper());
+        revealEnvelopeCryptoService = new CommitRevealEnvelopeCryptoService(properties);
         commitSecurityService = new CommitSecurityService(replayGuardRepository, revealEnvelopeCryptoService, properties);
     }
 
