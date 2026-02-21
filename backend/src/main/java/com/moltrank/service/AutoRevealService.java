@@ -442,9 +442,18 @@ public class AutoRevealService {
                 && commitment.getPair().getRound() != null
                 && commitment.getPair().getRound().getCommitDeadline() != null) {
             OffsetDateTime roundCommitDeadline = commitment.getPair().getRound().getCommitDeadline();
-            if (deadlineBase == null || roundCommitDeadline.isAfter(deadlineBase)) {
-                deadlineBase = roundCommitDeadline;
-            }
+            deadlineBase = maxTime(deadlineBase, roundCommitDeadline);
+        }
+
+        if (commitment.getPair() != null
+                && commitment.getPair().getRound() != null
+                && commitment.getPair().getRound().getRevealDeadline() != null) {
+            OffsetDateTime roundRevealDeadline = commitment.getPair().getRound().getRevealDeadline();
+            deadlineBase = maxTime(deadlineBase, roundRevealDeadline);
+        }
+
+        if (commitment.getAutoRevealFailedAt() != null) {
+            deadlineBase = maxTime(deadlineBase, commitment.getAutoRevealFailedAt());
         }
 
         if (deadlineBase == null) {
@@ -486,5 +495,15 @@ public class AutoRevealService {
             out.append(Character.forDigit(value & 0x0f, 16));
         }
         return out.toString();
+    }
+
+    private static OffsetDateTime maxTime(OffsetDateTime left, OffsetDateTime right) {
+        if (left == null) {
+            return right;
+        }
+        if (right == null) {
+            return left;
+        }
+        return right.isAfter(left) ? right : left;
     }
 }

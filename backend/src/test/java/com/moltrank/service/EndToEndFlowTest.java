@@ -57,6 +57,7 @@ class EndToEndFlowTest {
                 pairRepository, commitmentRepository, curatorRepository,
                 globalPoolRepository, roundRepository,
                 poolService, eloService);
+        ReflectionTestUtils.setField(settlementService, "gracePeriodMinutes", 30);
 
         ReflectionTestUtils.setField(pairGenerationService, "pairsPerSubscriber", 5);
 
@@ -247,6 +248,61 @@ class EndToEndFlowTest {
         assertEquals(2_000_000_000L, nonRevealCurator.getLost(),
                 "Non-reveal should lose 100% stake (2 SOL)");
         assertTrue(nonRevealed.getNonRevealPenalized(), "Non-reveal penalty should be marked on commitment");
+    }
+
+    @Test
+    void fullFlow_nonRevealPenaltyWaitsForFailureGraceWindow() {
+        Round round = new Round();
+        round.setId(6);
+        round.setMarket(market);
+        round.setStatus(RoundStatus.SETTLING);
+        round.setPairs(10);
+        round.setCommitDeadline(OffsetDateTime.now().minusHours(2));
+        round.setRevealDeadline(OffsetDateTime.now().minusHours(1));
+
+        Pair pair = new Pair();
+        pair.setId(102);
+        pair.setRound(round);
+        pair.setPostA(posts.get(0));
+        pair.setPostB(posts.get(1));
+        pair.setIsGolden(false);
+        pair.setIsAudit(false);
+
+        Curator revealedCurator = createCurator("wallet-revealed-3", 1, 14, new BigDecimal("0.80"));
+        Curator nonRevealCurator = createCurator("wallet-nonreveal-3", 1, 15, new BigDecimal("0.60"));
+
+        Commitment revealed = createCommitment(pair, "wallet-revealed-3", PairWinner.A, 1_000_000_000L, true);
+        Commitment nonRevealed = createCommitment(pair, "wallet-nonreveal-3", null, 2_000_000_000L, false);
+        nonRevealed.setCommittedAt(OffsetDateTime.now().minusHours(3));
+        nonRevealed.setAutoRevealFailedAt(OffsetDateTime.now().minusMinutes(10));
+
+        when(roundRepository.findById(6)).thenReturn(Optional.of(round));
+        when(roundRepository.findByStatus(RoundStatus.SETTLING)).thenReturn(List.of(round));
+        when(globalPoolRepository.findById(1)).thenReturn(Optional.of(globalPool));
+        when(marketRepository.findAll()).thenReturn(List.of(market));
+        when(pairRepository.findByRoundId(6)).thenReturn(List.of(pair));
+        when(commitmentRepository.findByPairId(102)).thenReturn(List.of(revealed, nonRevealed));
+        when(curatorRepository.findById(any(CuratorId.class))).thenAnswer(inv -> {
+            CuratorId id = inv.getArgument(0);
+            if ("wallet-revealed-3".equals(id.getWallet())) return Optional.of(revealedCurator);
+            if ("wallet-nonreveal-3".equals(id.getWallet())) return Optional.of(nonRevealCurator);
+            return Optional.empty();
+        });
+        when(postRepository.findById(posts.get(0).getId())).thenReturn(Optional.of(posts.get(0)));
+        when(postRepository.findById(posts.get(1).getId())).thenReturn(Optional.of(posts.get(1)));
+        when(postRepository.save(any(Post.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(pairRepository.save(any(Pair.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(curatorRepository.save(any(Curator.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(globalPoolRepository.save(any(GlobalPool.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(roundRepository.save(any(Round.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        String hash = settlementService.settleRound(6);
+
+        assertNotNull(hash);
+        assertEquals(0L, nonRevealCurator.getLost(),
+                "Non-reveal should not be penalized before grace window from auto-reveal failure expires");
+        assertFalse(nonRevealed.getNonRevealPenalized(),
+                "Commitment should remain unpenalized while within grace window");
     }
 
     @Test

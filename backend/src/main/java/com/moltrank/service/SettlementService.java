@@ -342,9 +342,18 @@ public class SettlementService {
                 && commitment.getPair().getRound() != null
                 && commitment.getPair().getRound().getCommitDeadline() != null) {
             OffsetDateTime roundCommitDeadline = commitment.getPair().getRound().getCommitDeadline();
-            if (deadlineBase == null || roundCommitDeadline.isAfter(deadlineBase)) {
-                deadlineBase = roundCommitDeadline;
-            }
+            deadlineBase = maxTime(deadlineBase, roundCommitDeadline);
+        }
+
+        if (commitment.getPair() != null
+                && commitment.getPair().getRound() != null
+                && commitment.getPair().getRound().getRevealDeadline() != null) {
+            OffsetDateTime roundRevealDeadline = commitment.getPair().getRound().getRevealDeadline();
+            deadlineBase = maxTime(deadlineBase, roundRevealDeadline);
+        }
+
+        if (commitment.getAutoRevealFailedAt() != null) {
+            deadlineBase = maxTime(deadlineBase, commitment.getAutoRevealFailedAt());
         }
 
         if (deadlineBase == null) {
@@ -370,6 +379,16 @@ public class SettlementService {
             result.append(String.format("%02x", b));
         }
         return result.toString();
+    }
+
+    private static OffsetDateTime maxTime(OffsetDateTime left, OffsetDateTime right) {
+        if (left == null) {
+            return right;
+        }
+        if (right == null) {
+            return left;
+        }
+        return right.isAfter(left) ? right : left;
     }
 
     /**

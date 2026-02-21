@@ -237,6 +237,42 @@ class AutoRevealServiceTest {
     }
 
     @Test
+    void enforceNonRevealPenalties_usesAutoRevealFailureTimeForGraceWindow() {
+        ReflectionTestUtils.setField(autoRevealService, "gracePeriodMinutes", 30);
+
+        Market market = new Market();
+        market.setId(1);
+
+        Round round = new Round();
+        round.setId(12);
+        round.setMarket(market);
+        round.setCommitDeadline(OffsetDateTime.now().minusHours(2));
+        round.setRevealDeadline(OffsetDateTime.now().minusHours(1));
+
+        Pair pair = new Pair();
+        pair.setId(35);
+        pair.setRound(round);
+
+        Commitment commitment = new Commitment();
+        commitment.setId(14);
+        commitment.setPair(pair);
+        commitment.setCuratorWallet(WALLET);
+        commitment.setStake(1_000_000_000L);
+        commitment.setCommittedAt(OffsetDateTime.now().minusHours(3));
+        commitment.setAutoRevealFailedAt(OffsetDateTime.now().minusMinutes(10));
+        commitment.setRevealed(false);
+        commitment.setNonRevealPenalized(false);
+
+        when(commitmentRepository.findByRevealedAndNonRevealPenalized(false, false)).thenReturn(List.of(commitment));
+
+        autoRevealService.enforceNonRevealPenalties();
+
+        verify(poolService, never()).addToPool(anyLong(), any(String.class));
+        verify(commitmentRepository, never()).save(any(Commitment.class));
+        verifyNoInteractions(curatorRepository);
+    }
+
+    @Test
     void scheduledNonRevealPenaltyEnforcement_skipsWhenDisabled() {
         ReflectionTestUtils.setField(autoRevealService, "penaltyEnforcementEnabled", false);
 
