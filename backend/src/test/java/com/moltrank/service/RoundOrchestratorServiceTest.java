@@ -32,6 +32,7 @@ class RoundOrchestratorServiceTest {
     @Mock private PairGenerationService pairGenerationService;
     @Mock private AutoRevealService autoRevealService;
     @Mock private SettlementService settlementService;
+    @Mock private CuratorParticipationService curatorParticipationService;
 
     @InjectMocks
     private RoundOrchestratorService orchestrator;
@@ -73,6 +74,7 @@ class RoundOrchestratorServiceTest {
 
         verify(roundRepository, atLeastOnce()).save(any(Round.class));
         verify(pairGenerationService).generatePairs(any());
+        verify(curatorParticipationService).resetPairsThisEpochForMarket(1);
     }
 
     @Test
@@ -232,6 +234,21 @@ class RoundOrchestratorServiceTest {
 
         assertNull(result);
         verify(roundRepository).delete(any(Round.class));
+    }
+
+    @Test
+    void createNewRound_resetsCuratorEpochCountersAtRoundBoundary() {
+        when(roundRepository.findByMarketIdAndStatusIn(eq(1), any())).thenReturn(List.of());
+        when(roundRepository.save(any(Round.class))).thenAnswer(inv -> {
+            Round r = inv.getArgument(0);
+            r.setId(1);
+            return r;
+        });
+        when(pairGenerationService.generatePairs(any())).thenReturn(List.of(new Pair()));
+
+        orchestrator.createNewRound(market);
+
+        verify(curatorParticipationService).resetPairsThisEpochForMarket(1);
     }
 
     // ========================================================================

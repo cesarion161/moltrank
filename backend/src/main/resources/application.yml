@@ -49,6 +49,7 @@ moltrank:
   curation:
     target-reveals-per-pair: 3
     expected-reveals-per-curator: 6
+    max-pairs-per-curator-per-round: 20
   ingestion:
     enabled: true
     run-on-startup: true

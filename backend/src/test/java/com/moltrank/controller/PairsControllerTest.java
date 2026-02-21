@@ -5,21 +5,26 @@ import com.moltrank.repository.CommitmentRepository;
 import com.moltrank.repository.IdentityRepository;
 import com.moltrank.repository.PairRepository;
 import com.moltrank.service.CommitSecurityService;
+import com.moltrank.service.CuratorParticipationService;
 import com.moltrank.service.PairSelectionService;
 import com.moltrank.service.PairSkipService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.OffsetDateTime;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.junit.jupiter.api.Assertions.*;
@@ -54,6 +59,9 @@ class PairsControllerTest {
 
     @MockitoBean
     private CommitSecurityService commitSecurityService;
+
+    @MockitoBean
+    private CuratorParticipationService curatorParticipationService;
 
     private static final String WALLET = "4Nd1mYQzvgV8Vr3Z3nYb7pD6T8K9jF2eqWxY1S3Qh5Ro";
     private static final String NORMALIZED_HASH = "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
@@ -129,6 +137,14 @@ class PairsControllerTest {
         return identity;
     }
 
+    @BeforeEach
+    void setUp() {
+        lenient().when(curatorParticipationService.hasRemainingCapacity(anyString(), anyInt()))
+                .thenReturn(true);
+        lenient().when(curatorParticipationService.tryConsumePairEvaluationSlot(anyString(), anyInt()))
+                .thenReturn(true);
+    }
+
     @Test
     void getNextPair_returnsPairForCurator() throws Exception {
         Pair pair = buildPair(false);
@@ -164,6 +180,16 @@ class PairsControllerTest {
     @Test
     void getNextPair_returns404WhenWalletIdentityDoesNotExist() throws Exception {
         when(identityRepository.findByWallet(WALLET)).thenReturn(Optional.empty());
+
+        mockMvc.perform(get("/api/pairs/next")
+                        .param("wallet", WALLET))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void getNextPair_returns404WhenCuratorReachedParticipationCap() throws Exception {
+        when(identityRepository.findByWallet(WALLET)).thenReturn(Optional.of(buildIdentity(WALLET)));
+        when(curatorParticipationService.hasRemainingCapacity(WALLET, 1)).thenReturn(false);
 
         mockMvc.perform(get("/api/pairs/next")
                         .param("wallet", WALLET))
@@ -326,6 +352,34 @@ class PairsControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void commitPair_returns409WhenCuratorReachedParticipationCap() throws Exception {
+        Pair pair = buildPair(false);
+        when(pairRepository.findById(1)).thenReturn(Optional.of(pair));
+        when(identityRepository.findByWallet(WALLET)).thenReturn(Optional.of(buildIdentity(WALLET)));
+        when(commitSecurityService.secureCommitPayload(eq(1), any()))
+                .thenReturn(new CommitSecurityService.SecuredCommitmentPayload(NORMALIZED_HASH, STORAGE_ENVELOPE));
+        when(curatorParticipationService.tryConsumePairEvaluationSlot(WALLET, 1)).thenReturn(false);
+
+        String requestBody = """
+                {
+                    "wallet": "%s",
+                    "commitmentHash": "%s",
+                    "stakeAmount": 1000000000,
+                    "encryptedReveal": "encrypted-payload",
+                    "revealIv": "AAAAAAAAAAAAAAAA",
+                    "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+                    "signedAt": 1730000000,
+                    "requestNonce": "00112233445566778899aabbccddeeff"
+                }
+                """.formatted(WALLET, NORMALIZED_HASH);
+
+        mockMvc.perform(post("/api/pairs/{id}/commit", 1)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isConflict());
     }
 
     @Test

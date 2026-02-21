@@ -52,6 +52,7 @@ public class RoundOrchestratorService {
     private final PairGenerationService pairGenerationService;
     private final AutoRevealService autoRevealService;
     private final SettlementService settlementService;
+    private final CuratorParticipationService curatorParticipationService;
 
     private static final List<RoundStatus> ACTIVE_STATUSES = List.of(
             RoundStatus.OPEN, RoundStatus.COMMIT, RoundStatus.REVEAL, RoundStatus.SETTLING);
@@ -176,6 +177,8 @@ public class RoundOrchestratorService {
                     market.getName(), minCurators, market.getSubscribers());
             return null;
         }
+
+        curatorParticipationService.resetPairsThisEpochForMarket(market.getId());
 
         Round round = new Round();
         round.setMarket(market);

@@ -9,10 +9,12 @@ import com.moltrank.repository.CommitmentRepository;
 import com.moltrank.repository.IdentityRepository;
 import com.moltrank.repository.PairRepository;
 import com.moltrank.service.CommitSecurityService;
+import com.moltrank.service.CuratorParticipationService;
 import com.moltrank.service.PairSelectionService;
 import com.moltrank.service.PairSkipService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.OffsetDateTime;
@@ -30,19 +32,22 @@ public class PairsController {
     private final PairSkipService pairSkipService;
     private final PairSelectionService pairSelectionService;
     private final CommitSecurityService commitSecurityService;
+    private final CuratorParticipationService curatorParticipationService;
 
     public PairsController(PairRepository pairRepository,
                            CommitmentRepository commitmentRepository,
                            IdentityRepository identityRepository,
                            PairSkipService pairSkipService,
                            PairSelectionService pairSelectionService,
-                           CommitSecurityService commitSecurityService) {
+                           CommitSecurityService commitSecurityService,
+                           CuratorParticipationService curatorParticipationService) {
         this.pairRepository = pairRepository;
         this.commitmentRepository = commitmentRepository;
         this.identityRepository = identityRepository;
         this.pairSkipService = pairSkipService;
         this.pairSelectionService = pairSelectionService;
         this.commitSecurityService = commitSecurityService;
+        this.curatorParticipationService = curatorParticipationService;
     }
 
     /**
@@ -58,6 +63,10 @@ public class PairsController {
             @RequestParam(defaultValue = "1") Integer marketId) {
 
         if (identityRepository.findByWallet(wallet).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        if (!curatorParticipationService.hasRemainingCapacity(wallet, marketId)) {
             return ResponseEntity.notFound().build();
         }
 
@@ -80,6 +89,7 @@ public class PairsController {
      * @return Created commitment
      */
     @PostMapping("/{id}/commit")
+    @Transactional
     public ResponseEntity<Void> commitPair(
             @PathVariable Integer id,
             @RequestBody CommitPairRequest request) {
@@ -100,9 +110,15 @@ public class PairsController {
             return ResponseEntity.badRequest().build();
         }
 
+        Integer marketId = pair.getRound().getMarket().getId();
+
         try {
             CommitSecurityService.SecuredCommitmentPayload securedPayload =
                     commitSecurityService.secureCommitPayload(id, request);
+
+            if (!curatorParticipationService.tryConsumePairEvaluationSlot(request.wallet(), marketId)) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).build();
+            }
 
             Commitment commitment = new Commitment();
             commitment.setCuratorWallet(request.wallet());
