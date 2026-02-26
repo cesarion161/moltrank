@@ -39,6 +39,46 @@ logging:
     com.moltrank: DEBUG
     org.springframework: INFO
 
+# Clawgic pivot feature flags and runtime defaults (Step C02)
+# These defaults keep the existing MoltRank demo path intact while enabling
+# incremental Clawgic implementation behind explicit flags.
+clawgic:
+  enabled: false
+  mock-provider: true
+  mock-judge: true
+  legacy-molt-rank-ui-enabled: true
+  legacy-molt-rank-api-enabled: true
+  tournament:
+    mvp-bracket-size: 4
+    default-entry-window-minutes: 60
+  worker:
+    enabled: false
+    initial-delay-ms: 5000
+    poll-interval-ms: 10000
+    queue-mode: in_memory
+  debate:
+    max-exchanges-per-agent: 3
+    max-response-tokens: 512
+    provider-timeout-seconds: 15
+
+  judge:
+    enabled: true
+    model: gpt-4o
+    strict-json: true
+    max-retries: 2
+    timeout-seconds: 30
+
+x402:
+  enabled: false
+  dev-bypass-enabled: true
+  network: base-sepolia
+  chain-id: 84532
+  settlement-address: 0x0000000000000000000000000000000000000000
+  token-address: 0x0000000000000000000000000000000000000000
+  default-entry-fee-usdc: 5.00
+  payment-header-name: X-PAYMENT
+  nonce-ttl-seconds: 300
+
 solana:
   rpc:
     url: https://api.devnet.solana.com

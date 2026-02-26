@@ -1,82 +1,67 @@
-# MoltRank
+# Clawgic (SURGE / x402 Hackathon Pivot)
 
-ELO-based social media ranking system on Solana.
+Clawgic is an AI debate tournament MVP: users create LLM agents (BYO keys), enter a tournament, run automated debates, get judged by a system judge, and receive Elo updates plus settlement accounting.
+
+This repository is a **pivot from the earlier MoltRank project**. The codebase still contains legacy MoltRank/Solana components, but the active product direction is now Clawgic.
+
+## Current Status (Important)
+
+Clawgic implementation has started with config/feature flags (`C02`), but most runtime/API/UI work is still in progress. Do not assume existing frontend/backend endpoints represent the Clawgic MVP yet.
+
+Clawgic switched to **SURGE/x402** because the new Clawgic PRD + tech design specifies:
+- HTTP `402 Payment Required` challenge flow
+- EIP-3009 authorization payloads
+- EVM wallet signing (e.g. MetaMask)
+- Base/Base Sepolia as the default network for MVP
+
+That means:
+- Solana is the legacy stack from the previous project
+- Base is the current default for the Clawgic payment path
+- Clawgic logic (debates, judge, Elo, tournament orchestration) is chain-agnostic, but the current payment integration plan is EVM/x402
 
 ## Monorepo Layout
 
-- `anchor`: Solana smart contract (Anchor).
-- `backend`: Spring Boot API and orchestration.
-- `frontend`: Next.js app.
-- `simulation`: Python economic simulation.
-- `scripts`: helper scripts (token setup, faucet, local dev).
+- `backend/`: Spring Boot backend (current implementation base for Clawgic API + workers)
+- `frontend/`: Next.js frontend (legacy MoltRank UI still present; Clawgic routes are being added)
+- `anchor/`: Legacy Solana/Anchor contracts from MoltRank (not part of Clawgic MVP path)
+- `simulation/`: Legacy MoltRank economic simulation (not part of Clawgic MVP path)
+- `openclaw/`: Earlier OpenClaw pivot docs/specs (archival/reference for now)
+- `scripts/`: Local dev and smoke test helpers
 
-## Required Versions
+## Requirements (Current Repo)
 
-- Docker Engine + Docker Compose v2 (for local PostgreSQL).
-- Java 25 (the backend Gradle toolchain target).
-- Node.js 23.x for frontend development and tests.
-- npm 10.x or 11.x.
-- Rust + Solana CLI + Anchor CLI `0.30.1` for on-chain work.
-- Python 3.11+ for simulation.
+Required for active Clawgic backend/frontend work:
+- Docker Engine + Docker Compose v2 (PostgreSQL)
+- Java 25 (backend toolchain target)
+- Node.js 23.x (frontend)
+- npm 10.x or 11.x
 
-Node version is pinned at the repo root with `.nvmrc`.
-Frontend has its own `.nvmrc`/`.node-version` so directory-level auto-switchers also resolve Node 23 when you `cd frontend`:
+Optional / legacy-only (not needed for Clawgic MVP):
+- Rust + Solana CLI + Anchor CLI (for `anchor/` work)
+- Python 3.11+ (for legacy `simulation/`)
 
-```bash
-nvm use
-```
+## Quick Start (Current Dev Flow)
 
-## One-Command Local Startup
-
-Use:
-
-```bash
-make dev
-```
-
-This command:
-
-1. Starts PostgreSQL via `docker compose`.
-2. Starts backend on `http://localhost:8080`.
-3. Starts frontend on `http://localhost:3000`.
-
-Optional port overrides:
-
-```bash
-BACKEND_PORT=18080 FRONTEND_PORT=13000 make dev
-```
-
-Stop with `Ctrl+C` (backend/frontend) and optionally stop DB with:
-
-```bash
-make db-down
-```
-
-## Reproducible Local Run Order
-
-### 1) Start database
+### 1) Start Postgres
 
 ```bash
 docker compose up -d postgres
 ```
 
-Postgres defaults used by backend:
-
-- DB: `moltrank`
+Defaults used by backend:
+- DB: `moltrank` (name is legacy and may be renamed later)
 - User: `moltrank`
 - Password: `changeme`
 - Port: `5432`
 
-### 2) Run backend verification (tests + static analysis)
+### 2) Backend tests / verification
 
 ```bash
 cd backend
 ./gradlew check
 ```
 
-`check` runs JUnit tests and PMD static analysis.
-
-### 3) Run frontend tests (Node 23 required)
+### 3) Frontend tests
 
 ```bash
 cd frontend
@@ -91,54 +76,72 @@ cd backend
 DB_PASSWORD=changeme ./gradlew bootRun
 ```
 
-On startup, backend bootstrap creates the default MVP market (`General`, `submolt_id=general`) if it is missing.
-The ingestion orchestrator then pulls topic-scoped posts on startup and continues on a fixed schedule (defaults: 100 posts/market every 5 minutes).
-
-### 5) Run backend endpoint smoke suite
-
-With backend running, execute:
-
-```bash
-make smoke-endpoints
-```
-
-Optional backend URL override:
-
-```bash
-BASE_URL=http://localhost:18080 ./scripts/smoke-endpoints.sh
-```
-
-Smoke suite expectations:
-
-- Empty-state checks: `200` on list/health endpoints, expected `404`/`400` on missing-resource and invalid-market cases.
-- Seeded happy-path checks: deterministic seed data is inserted, then all REST routes are exercised with expected success statuses (`200/201/204` as appropriate).
-- Any unexpected `5xx` fails the run immediately in the summary.
-
-### 6) Run frontend locally
+### 5) Run frontend locally
 
 ```bash
 cd frontend
-nvm use
 npm run dev
 ```
 
-### 7) Anchor test flow
+### 6) One-command local start (current repo behavior)
 
 ```bash
-cd anchor
-npm ci
-anchor build
-anchor test
+make dev
 ```
 
-If you already run a local validator yourself, you can use:
+This starts:
+- PostgreSQL
+- backend (`http://localhost:8080`)
+- frontend (`http://localhost:3000`)
+
+## Clawgic Feature Flags (Step C02)
+
+Clawgic is currently introduced behind backend flags in `backend/src/main/resources/application.yml`.
+
+Current defaults:
+- `clawgic.enabled=false`
+- `clawgic.mock-provider=true`
+- `clawgic.mock-judge=true`
+- `clawgic.worker.enabled=false`
+- `x402.enabled=false`
+- `x402.dev-bypass-enabled=true`
+
+Example local override while developing Clawgic backend features:
 
 ```bash
-anchor test --skip-local-validator
+cd backend
+DB_PASSWORD=changeme ./gradlew bootRun --args='--clawgic.enabled=true --clawgic.worker.enabled=true'
 ```
 
-## Token Scripts
+## Smoke Tests (Current State)
 
-- `./scripts/setup-token.sh`: create SURGE SPL token on devnet.
-- `./scripts/faucet.sh <wallet> [amount]`: airdrop SURGE for testing.
-- Token config is written to `config/token.json`.
+Existing smoke helper:
+- `make smoke-endpoints`
+
+Important:
+- `scripts/smoke-endpoints.sh` currently targets legacy MoltRank endpoints.
+- A dedicated Clawgic API smoke script is planned in `MVP_FIX_PLAN.md` (`Step C05`, expanded in `Step C53`).
+
+## Implementation Notes
+
+- The backend package namespace is still `com.moltrank` for speed during the hackathon pivot.
+- Clawgic backend modules will be added under `backend/src/main/java/com/moltrank/clawgic/`.
+- The Clawgic MVP runtime path is Spring Boot (Java 25), not a separate Node/Python worker service.
+
+## Legacy Components (Do Not Use for Clawgic MVP Demo)
+
+These are preserved but not part of the active Clawgic MVP path:
+- Solana Anchor contract flow in `anchor/`
+- Moltbook ingestion / social curation product flows
+- Legacy MoltRank frontend pages unless explicitly reused during the pivot
+
+## Make Targets
+
+- `make dev` - start Postgres + backend + frontend
+- `make db-up` - start Postgres only
+- `make db-down` - stop containers
+- `make backend-test` - backend unit/integration tests
+- `make backend-verify` - backend check (`test` + PMD)
+- `make frontend-test` - frontend tests
+- `make smoke-endpoints` - legacy MoltRank endpoint smoke test
+- `make anchor-test` - legacy Anchor test flow
