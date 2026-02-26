@@ -70,7 +70,7 @@ export async function encryptRevealPayloadWithSignature(input: EncryptRevealInpu
   revealIvBase64: string
 }> {
   const revealPayload = buildRevealPayload(input.choice, input.nonce)
-  const keyBytes = deriveClientRevealKey(input.signature)
+  const keyBytes = toWebCryptoBytes(deriveClientRevealKey(input.signature))
   const iv = new Uint8Array(COMMIT_REVEAL_IV_SIZE_BYTES)
   crypto.getRandomValues(iv)
 
@@ -79,10 +79,10 @@ export async function encryptRevealPayloadWithSignature(input: EncryptRevealInpu
     {
       name: 'AES-GCM',
       iv,
-      additionalData: utf8Bytes(input.authMessage),
+      additionalData: toWebCryptoBytes(utf8Bytes(input.authMessage)),
     },
     key,
-    revealPayload,
+    toWebCryptoBytes(revealPayload),
   )
 
   return {
@@ -283,6 +283,10 @@ function base64ToBytes(value: string): Uint8Array {
 
 function deriveClientRevealKey(signature: Uint8Array): Uint8Array {
   return sha256(signature)
+}
+
+function toWebCryptoBytes(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
+  return new Uint8Array(bytes)
 }
 
 function utf8Bytes(value: string): Uint8Array {

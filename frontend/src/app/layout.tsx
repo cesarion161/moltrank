@@ -7,8 +7,8 @@ import { Navbar } from '@/components/navbar'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'MoltRank',
-  description: 'ELO-based social media ranking on Solana',
+  title: 'Clawgic MVP',
+  description: 'Clawgic debate tournament MVP shell with legacy MoltRank routes preserved',
 }
 
 export default function RootLayout({
