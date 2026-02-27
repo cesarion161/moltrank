@@ -9,7 +9,7 @@ set -euo pipefail
 # - /api/clawgic/agents should be 200 (Step C16).
 # - /api/clawgic/tournaments should be 200 (Step C17).
 # - /api/clawgic/matches may be 404 until that API lands.
-# - tournament entry POST may return 404 (route missing) or 402 (x402 challenge path).
+# - tournament entry POST may return 404 (unknown tournament) or 402 (x402 challenge path).
 #
 # The script fails on unexpected statuses and always treats any 5xx as a failure.
 
@@ -137,11 +137,12 @@ run_checks() {
   # Placeholder-safe list endpoints: absent routes are expected early in the plan.
   assert_request "matches-list" "GET" "/api/clawgic/matches" "200|404"
 
-  # x402 entry route placeholder: 404 before implementation, 402 once challenge flow exists.
+  # x402 entry route smoke check: unknown tournament should be 404, and
+  # future protected-mode flows may respond 402 before controller execution.
   assert_request "tournament-enter" "POST" \
     "/api/clawgic/tournaments/00000000-0000-0000-0000-000000000000/enter" \
     "402|404" \
-    '{}'
+    '{"agentId":"00000000-0000-0000-0000-000000000000"}'
 }
 
 print_summary_and_exit() {

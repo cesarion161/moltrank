@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
 public final class ClawgicTournamentRequests {
 
@@ -39,5 +40,11 @@ public final class ClawgicTournamentRequests {
             }
             return !entryCloseTime.isAfter(startTime);
         }
+    }
+
+    public record EnterTournamentRequest(
+            @NotNull(message = "agentId is required")
+            UUID agentId
+    ) {
     }
 }

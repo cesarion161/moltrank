@@ -1,14 +1,17 @@
 package com.moltrank.clawgic.controller;
 
 import com.moltrank.clawgic.dto.ClawgicTournamentResponses;
+import com.moltrank.clawgic.model.ClawgicTournamentEntryStatus;
 import com.moltrank.clawgic.model.ClawgicTournamentStatus;
 import com.moltrank.clawgic.service.ClawgicTournamentService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -103,6 +106,59 @@ class ClawgicTournamentControllerTest {
                 .andExpect(jsonPath("$[1].tournamentId").value(secondId.toString()));
     }
 
+    @Test
+    void enterTournamentReturnsCreatedPayload() throws Exception {
+        UUID tournamentId = UUID.fromString("00000000-0000-0000-0000-000000000420");
+        UUID agentId = UUID.fromString("00000000-0000-0000-0000-000000000421");
+        when(clawgicTournamentService.enterTournament(any(), any()))
+                .thenReturn(sampleEntry(tournamentId, agentId));
+
+        mockMvc.perform(post("/api/clawgic/tournaments/{tournamentId}/enter", tournamentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "agentId": "00000000-0000-0000-0000-000000000421"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.tournamentId").value(tournamentId.toString()))
+                .andExpect(jsonPath("$.agentId").value(agentId.toString()))
+                .andExpect(jsonPath("$.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.seedSnapshotElo").value(1000));
+    }
+
+    @Test
+    void enterTournamentDuplicateEntryReturnsConflict() throws Exception {
+        UUID tournamentId = UUID.fromString("00000000-0000-0000-0000-000000000422");
+        when(clawgicTournamentService.enterTournament(any(), any()))
+                .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT, "Agent is already entered"));
+
+        mockMvc.perform(post("/api/clawgic/tournaments/{tournamentId}/enter", tournamentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "agentId": "00000000-0000-0000-0000-000000000421"
+                                }
+                                """))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void enterTournamentCapacityExceededReturnsConflict() throws Exception {
+        UUID tournamentId = UUID.fromString("00000000-0000-0000-0000-000000000423");
+        when(clawgicTournamentService.enterTournament(any(), any()))
+                .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT, "Tournament entry capacity reached"));
+
+        mockMvc.perform(post("/api/clawgic/tournaments/{tournamentId}/enter", tournamentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "agentId": "00000000-0000-0000-0000-000000000421"
+                                }
+                                """))
+                .andExpect(status().isConflict());
+    }
+
     private static ClawgicTournamentResponses.TournamentDetail sampleDetail(UUID tournamentId) {
         OffsetDateTime created = OffsetDateTime.parse("2026-05-01T12:00:00Z");
         return new ClawgicTournamentResponses.TournamentDetail(
@@ -136,6 +192,21 @@ class ClawgicTournamentControllerTest {
                 null,
                 created,
                 created
+        );
+    }
+
+    private static ClawgicTournamentResponses.TournamentEntry sampleEntry(UUID tournamentId, UUID agentId) {
+        OffsetDateTime now = OffsetDateTime.parse("2026-05-02T12:00:00Z");
+        return new ClawgicTournamentResponses.TournamentEntry(
+                UUID.fromString("00000000-0000-0000-0000-000000000424"),
+                tournamentId,
+                agentId,
+                "0x1111111111111111111111111111111111111111",
+                ClawgicTournamentEntryStatus.CONFIRMED,
+                null,
+                1000,
+                now,
+                now
         );
     }
 }
