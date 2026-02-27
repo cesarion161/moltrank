@@ -17,6 +17,7 @@ import com.moltrank.clawgic.repository.ClawgicAgentRepository;
 import com.moltrank.clawgic.repository.ClawgicMatchRepository;
 import com.moltrank.clawgic.repository.ClawgicTournamentRepository;
 import com.moltrank.clawgic.repository.ClawgicUserRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -31,8 +32,14 @@ import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
         "spring.datasource.url=${C10_TEST_DB_URL:jdbc:postgresql://localhost:5432/moltrank}",
@@ -44,7 +51,8 @@ import static org.mockito.Mockito.doAnswer;
         "spring.flyway.locations=classpath:db/migration",
         "moltrank.ingestion.enabled=false",
         "moltrank.ingestion.run-on-startup=false",
-        "clawgic.mock-provider=true"
+        "clawgic.mock-provider=true",
+        "clawgic.debate.provider-timeout-seconds=1"
 })
 class ClawgicDebateExecutionServiceIntegrationTest {
 
@@ -65,6 +73,11 @@ class ClawgicDebateExecutionServiceIntegrationTest {
 
     @MockitoSpyBean
     private MockClawgicDebateProviderClient mockClawgicDebateProviderClient;
+
+    @BeforeEach
+    void resetSpies() {
+        reset(mockClawgicDebateProviderClient);
+    }
 
     @Test
     void executeMatchPersistsTranscriptAfterEachTurnAndTransitionsToPendingJudge() {
@@ -115,6 +128,95 @@ class ClawgicDebateExecutionServiceIntegrationTest {
             assertEquals(DebateTranscriptRole.AGENT_2, secondTurn.role());
             assertEquals(phase, secondTurn.phase());
         }
+    }
+
+    @Test
+    void executeMatchMarksMatchForfeitedWhenProviderTurnTimesOut() {
+        String walletOne = randomWalletAddress();
+        String walletTwo = randomWalletAddress();
+        createUser(walletOne);
+        createUser(walletTwo);
+
+        UUID agent1Id = createAgent(walletOne, "Timeout Agent One");
+        UUID agent2Id = createAgent(walletTwo, "Timeout Agent Two");
+        ClawgicTournament tournament = createTournament("Should timeout failures forfeit immediately?");
+        ClawgicMatch scheduledMatch = createScheduledMatch(tournament.getTournamentId(), agent1Id, agent2Id);
+
+        doAnswer(invocation -> {
+            Thread.sleep(1500);
+            return invocation.callRealMethod();
+        }).when(mockClawgicDebateProviderClient).generateTurn(any());
+
+        ClawgicMatch forfeitedMatch = clawgicDebateExecutionService.executeMatch(scheduledMatch.getMatchId());
+        ClawgicMatch persistedMatch = clawgicMatchRepository.findById(forfeitedMatch.getMatchId()).orElseThrow();
+
+        assertEquals(ClawgicMatchStatus.FORFEITED, persistedMatch.getStatus());
+        assertEquals(DebatePhase.THESIS_DISCOVERY, persistedMatch.getPhase());
+        assertEquals(agent2Id, persistedMatch.getWinnerAgentId());
+        assertNotNull(persistedMatch.getForfeitedAt());
+        assertNull(persistedMatch.getJudgeRequestedAt());
+        assertTrue(persistedMatch.getForfeitReason().contains("PROVIDER_TIMEOUT"));
+        assertTrue(persistedMatch.getForfeitReason().contains("failing_agent_id=" + agent1Id));
+        assertEquals(0, DebateTranscriptJsonCodec.fromJson(persistedMatch.getTranscriptJson()).size());
+        verify(mockClawgicDebateProviderClient, times(1)).generateTurn(any());
+    }
+
+    @Test
+    void executeMatchMarksMatchForfeitedWhenProviderAuthFails() {
+        String walletOne = randomWalletAddress();
+        String walletTwo = randomWalletAddress();
+        createUser(walletOne);
+        createUser(walletTwo);
+
+        UUID agent1Id = createAgent(walletOne, "Auth Fail Agent One");
+        UUID agent2Id = createAgent(walletTwo, "Auth Fail Agent Two");
+        ClawgicTournament tournament = createTournament("Should invalid keys map to deterministic forfeits?");
+        ClawgicMatch scheduledMatch = createScheduledMatch(tournament.getTournamentId(), agent1Id, agent2Id);
+
+        doThrow(new IllegalStateException("401 unauthorized: invalid api key"))
+                .when(mockClawgicDebateProviderClient)
+                .generateTurn(any());
+
+        ClawgicMatch forfeitedMatch = clawgicDebateExecutionService.executeMatch(scheduledMatch.getMatchId());
+        ClawgicMatch persistedMatch = clawgicMatchRepository.findById(forfeitedMatch.getMatchId()).orElseThrow();
+
+        assertEquals(ClawgicMatchStatus.FORFEITED, persistedMatch.getStatus());
+        assertEquals(agent2Id, persistedMatch.getWinnerAgentId());
+        assertNotNull(persistedMatch.getForfeitedAt());
+        assertNull(persistedMatch.getJudgeRequestedAt());
+        assertTrue(persistedMatch.getForfeitReason().contains("PROVIDER_AUTH_FAILURE"));
+        assertTrue(persistedMatch.getForfeitReason().contains("failing_agent_id=" + agent1Id));
+        assertEquals(0, DebateTranscriptJsonCodec.fromJson(persistedMatch.getTranscriptJson()).size());
+        verify(mockClawgicDebateProviderClient, times(1)).generateTurn(any());
+    }
+
+    @Test
+    void executeMatchMarksMatchForfeitedWhenProviderThrowsGenericErrorAndSkipsJudgeRequest() {
+        String walletOne = randomWalletAddress();
+        String walletTwo = randomWalletAddress();
+        createUser(walletOne);
+        createUser(walletTwo);
+
+        UUID agent1Id = createAgent(walletOne, "Error Agent One");
+        UUID agent2Id = createAgent(walletTwo, "Error Agent Two");
+        ClawgicTournament tournament = createTournament("Should generic provider errors skip judge pipeline?");
+        ClawgicMatch scheduledMatch = createScheduledMatch(tournament.getTournamentId(), agent1Id, agent2Id);
+
+        doThrow(new IllegalStateException("provider blew up"))
+                .when(mockClawgicDebateProviderClient)
+                .generateTurn(any());
+
+        ClawgicMatch forfeitedMatch = clawgicDebateExecutionService.executeMatch(scheduledMatch.getMatchId());
+        ClawgicMatch persistedMatch = clawgicMatchRepository.findById(forfeitedMatch.getMatchId()).orElseThrow();
+
+        assertEquals(ClawgicMatchStatus.FORFEITED, persistedMatch.getStatus());
+        assertEquals(agent2Id, persistedMatch.getWinnerAgentId());
+        assertNotNull(persistedMatch.getForfeitedAt());
+        assertNull(persistedMatch.getJudgeRequestedAt());
+        assertTrue(persistedMatch.getForfeitReason().contains("PROVIDER_ERROR"));
+        assertTrue(persistedMatch.getForfeitReason().contains("failing_agent_id=" + agent1Id));
+        assertEquals(0, DebateTranscriptJsonCodec.fromJson(persistedMatch.getTranscriptJson()).size());
+        verify(mockClawgicDebateProviderClient, times(1)).generateTurn(any());
     }
 
     private void createUser(String walletAddress) {

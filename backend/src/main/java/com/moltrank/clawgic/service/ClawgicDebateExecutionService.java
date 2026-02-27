@@ -22,13 +22,29 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeoutException;
 
 @Service
 public class ClawgicDebateExecutionService {
 
     private static final int TURNS_PER_PHASE = 2;
     private static final String DEFAULT_SYSTEM_PROMPT = "Debate clearly and challenge weak assumptions.";
+    private static final String FORFEIT_REASON_TIMEOUT = "PROVIDER_TIMEOUT";
+    private static final String FORFEIT_REASON_AUTH_FAILURE = "PROVIDER_AUTH_FAILURE";
+    private static final String FORFEIT_REASON_PROVIDER_ERROR = "PROVIDER_ERROR";
+    private static final List<String> AUTH_FAILURE_SIGNALS = List.of(
+            "unauthorized",
+            "forbidden",
+            "authentication",
+            "invalid api key",
+            "invalid_api_key",
+            "401",
+            "403"
+    );
 
     private final ClawgicMatchRepository clawgicMatchRepository;
     private final ClawgicTournamentRepository clawgicTournamentRepository;
@@ -80,23 +96,27 @@ public class ClawgicDebateExecutionService {
         List<DebateTranscriptMessage> transcript = decodeTranscript(match);
         markExecutionStarted(match, transcript);
 
-        for (DebatePhase phase : DebatePhase.orderedValues()) {
-            transcript = executeTurn(
-                    match,
-                    tournament,
-                    agent1,
-                    DebateTranscriptRole.AGENT_1,
-                    phase,
-                    transcript
-            );
-            transcript = executeTurn(
-                    match,
-                    tournament,
-                    agent2,
-                    DebateTranscriptRole.AGENT_2,
-                    phase,
-                    transcript
-            );
+        try {
+            for (DebatePhase phase : DebatePhase.orderedValues()) {
+                transcript = executeTurn(
+                        match,
+                        tournament,
+                        agent1,
+                        DebateTranscriptRole.AGENT_1,
+                        phase,
+                        transcript
+                );
+                transcript = executeTurn(
+                        match,
+                        tournament,
+                        agent2,
+                        DebateTranscriptRole.AGENT_2,
+                        phase,
+                        transcript
+                );
+            }
+        } catch (ProviderTurnFailureException ex) {
+            return markForfeited(match, ex);
         }
 
         OffsetDateTime now = OffsetDateTime.now();
@@ -140,7 +160,7 @@ public class ClawgicDebateExecutionService {
                 resolveMaxResponseWords()
         );
 
-        ClawgicProviderTurnResponse turnResponse = clawgicDebateProviderGateway.generateTurn(agent, turnInput);
+        ClawgicProviderTurnResponse turnResponse = generateTurnWithTimeout(agent, role, phase, turnInput);
 
         List<DebateTranscriptMessage> nextTranscript = new ArrayList<>(transcript);
         nextTranscript.add(new DebateTranscriptMessage(role, phase, turnResponse.content()));
@@ -150,6 +170,93 @@ public class ClawgicDebateExecutionService {
         match.setUpdatedAt(OffsetDateTime.now());
         clawgicMatchRepository.saveAndFlush(match);
         return List.copyOf(nextTranscript);
+    }
+
+    private ClawgicProviderTurnResponse generateTurnWithTimeout(
+            ClawgicAgent agent,
+            DebateTranscriptRole role,
+            DebatePhase phase,
+            ClawgicProviderTurnInput turnInput
+    ) {
+        int timeoutSeconds = resolveProviderTimeoutSeconds();
+        FutureTask<ClawgicProviderTurnResponse> providerTask =
+                new FutureTask<>(() -> clawgicDebateProviderGateway.generateTurn(agent, turnInput));
+        Thread.ofVirtual().name("clawgic-provider-turn-", 0).start(providerTask);
+
+        try {
+            return providerTask.get(timeoutSeconds, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (TimeoutException ex) {
+            providerTask.cancel(true);
+            throw new ProviderTurnFailureException(
+                    agent.getAgentId(),
+                    role,
+                    phase,
+                    FORFEIT_REASON_TIMEOUT,
+                    ex
+            );
+        } catch (ExecutionException ex) {
+            Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+            throw new ProviderTurnFailureException(
+                    agent.getAgentId(),
+                    role,
+                    phase,
+                    resolveForfeitReasonCode(cause),
+                    cause
+            );
+        } catch (InterruptedException ex) {
+            providerTask.cancel(true);
+            Thread.currentThread().interrupt();
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Execution thread interrupted while waiting for provider turn",
+                    ex
+            );
+        }
+    }
+
+    private ClawgicMatch markForfeited(ClawgicMatch match, ProviderTurnFailureException failure) {
+        OffsetDateTime now = OffsetDateTime.now();
+        match.setStatus(ClawgicMatchStatus.FORFEITED);
+        match.setPhase(failure.phase());
+        match.setWinnerAgentId(resolveForfeitWinner(match, failure.failingAgentId()));
+        match.setForfeitReason(buildForfeitReason(failure));
+        match.setForfeitedAt(now);
+        match.setUpdatedAt(now);
+        match.setJudgeRequestedAt(null);
+        return clawgicMatchRepository.saveAndFlush(match);
+    }
+
+    private UUID resolveForfeitWinner(ClawgicMatch match, UUID failingAgentId) {
+        if (failingAgentId == null) {
+            return null;
+        }
+        if (failingAgentId.equals(match.getAgent1Id())) {
+            return match.getAgent2Id();
+        }
+        if (failingAgentId.equals(match.getAgent2Id())) {
+            return match.getAgent1Id();
+        }
+        return null;
+    }
+
+    private String buildForfeitReason(ProviderTurnFailureException failure) {
+        return failure.reasonCode()
+                + ": failing_agent_id="
+                + failure.failingAgentId()
+                + ", role="
+                + failure.role()
+                + ", phase="
+                + failure.phase();
+    }
+
+    private String resolveForfeitReasonCode(Throwable failure) {
+        String message = failure == null ? "" : String.valueOf(failure.getMessage()).toLowerCase(Locale.ROOT);
+        for (String signal : AUTH_FAILURE_SIGNALS) {
+            if (message.contains(signal)) {
+                return FORFEIT_REASON_AUTH_FAILURE;
+            }
+        }
+        return FORFEIT_REASON_PROVIDER_ERROR;
     }
 
     private ClawgicAgent loadAgent(UUID agentId) {
@@ -183,15 +290,19 @@ public class ClawgicDebateExecutionService {
         return maxWords;
     }
 
-    private long resolveExecutionBudgetSeconds() {
-        int providerTimeoutSeconds = clawgicRuntimeProperties.getDebate().getProviderTimeoutSeconds();
-        if (providerTimeoutSeconds <= 0) {
+    private int resolveProviderTimeoutSeconds() {
+        int timeoutSeconds = clawgicRuntimeProperties.getDebate().getProviderTimeoutSeconds();
+        if (timeoutSeconds <= 0) {
             throw new ResponseStatusException(
                     HttpStatus.INTERNAL_SERVER_ERROR,
                     "clawgic.debate.provider-timeout-seconds must be greater than zero"
             );
         }
-        return (long) providerTimeoutSeconds * DebatePhase.orderedValues().size() * TURNS_PER_PHASE;
+        return timeoutSeconds;
+    }
+
+    private long resolveExecutionBudgetSeconds() {
+        return (long) resolveProviderTimeoutSeconds() * DebatePhase.orderedValues().size() * TURNS_PER_PHASE;
     }
 
     private String buildSystemPrompt(ClawgicAgent agent, DebatePhase phase) {
@@ -209,5 +320,43 @@ public class ClawgicDebateExecutionService {
             promptBuilder.append("\nPersona constraints: ").append(agent.getPersona().trim());
         }
         return promptBuilder.toString();
+    }
+
+    private static final class ProviderTurnFailureException extends RuntimeException {
+
+        private final UUID failingAgentId;
+        private final DebateTranscriptRole role;
+        private final DebatePhase phase;
+        private final String reasonCode;
+
+        private ProviderTurnFailureException(
+                UUID failingAgentId,
+                DebateTranscriptRole role,
+                DebatePhase phase,
+                String reasonCode,
+                Throwable cause
+        ) {
+            super(reasonCode, cause);
+            this.failingAgentId = failingAgentId;
+            this.role = role;
+            this.phase = phase;
+            this.reasonCode = reasonCode;
+        }
+
+        private UUID failingAgentId() {
+            return failingAgentId;
+        }
+
+        private DebateTranscriptRole role() {
+            return role;
+        }
+
+        private DebatePhase phase() {
+            return phase;
+        }
+
+        private String reasonCode() {
+            return reasonCode;
+        }
     }
 }
