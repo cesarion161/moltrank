@@ -10,7 +10,11 @@ import java.util.UUID;
 
 @Repository
 public interface ClawgicMatchRepository extends JpaRepository<ClawgicMatch, UUID> {
+    boolean existsByTournamentId(UUID tournamentId);
+
     List<ClawgicMatch> findByTournamentIdOrderByCreatedAtAsc(UUID tournamentId);
+
+    List<ClawgicMatch> findByTournamentIdOrderByBracketRoundAscBracketPositionAscCreatedAtAsc(UUID tournamentId);
 
     List<ClawgicMatch> findByStatusOrderByUpdatedAtAsc(ClawgicMatchStatus status);
 }

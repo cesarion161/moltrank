@@ -8,6 +8,7 @@ set -euo pipefail
 # - /api/clawgic/health should be 200 (Step C04 stub endpoint).
 # - /api/clawgic/agents should be 200 (Step C16).
 # - /api/clawgic/tournaments should be 200 (Step C17).
+# - /api/clawgic/tournaments/{id}/bracket returns 404 on unknown tournament (Step C19).
 # - /api/clawgic/matches may be 404 until that API lands.
 # - tournament entry POST may return 404 (unknown tournament) or 402 (x402 challenge path).
 #
@@ -143,6 +144,11 @@ run_checks() {
     "/api/clawgic/tournaments/00000000-0000-0000-0000-000000000000/enter" \
     "402|404" \
     '{"agentId":"00000000-0000-0000-0000-000000000000"}'
+
+  # Bracket generation endpoint should be present after C19.
+  assert_request "tournament-bracket" "POST" \
+    "/api/clawgic/tournaments/00000000-0000-0000-0000-000000000000/bracket" \
+    "404"
 }
 
 print_summary_and_exit() {

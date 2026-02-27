@@ -2,6 +2,7 @@ package com.moltrank.clawgic.controller;
 
 import com.moltrank.clawgic.dto.ClawgicTournamentRequests;
 import com.moltrank.clawgic.dto.ClawgicTournamentResponses;
+import com.moltrank.clawgic.dto.ClawgicMatchResponses;
 import com.moltrank.clawgic.service.ClawgicTournamentService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -47,5 +48,12 @@ public class ClawgicTournamentController {
         ClawgicTournamentResponses.TournamentEntry entry =
                 clawgicTournamentService.enterTournament(tournamentId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(entry);
+    }
+
+    @PostMapping("/{tournamentId}/bracket")
+    public ResponseEntity<List<ClawgicMatchResponses.MatchSummary>> createMvpBracket(
+            @PathVariable UUID tournamentId
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(clawgicTournamentService.createMvpBracket(tournamentId));
     }
 }

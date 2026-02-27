@@ -5,6 +5,8 @@ import com.moltrank.clawgic.dto.ClawgicTournamentRequests;
 import com.moltrank.clawgic.dto.ClawgicTournamentResponses;
 import com.moltrank.clawgic.model.ClawgicAgent;
 import com.moltrank.clawgic.model.ClawgicAgentElo;
+import com.moltrank.clawgic.model.ClawgicMatch;
+import com.moltrank.clawgic.model.ClawgicMatchStatus;
 import com.moltrank.clawgic.model.ClawgicPaymentAuthorization;
 import com.moltrank.clawgic.model.ClawgicPaymentAuthorizationStatus;
 import com.moltrank.clawgic.model.ClawgicProviderType;
@@ -17,6 +19,7 @@ import com.moltrank.clawgic.model.ClawgicTournamentStatus;
 import com.moltrank.clawgic.model.ClawgicUser;
 import com.moltrank.clawgic.repository.ClawgicAgentEloRepository;
 import com.moltrank.clawgic.repository.ClawgicAgentRepository;
+import com.moltrank.clawgic.repository.ClawgicMatchRepository;
 import com.moltrank.clawgic.repository.ClawgicPaymentAuthorizationRepository;
 import com.moltrank.clawgic.repository.ClawgicStakingLedgerRepository;
 import com.moltrank.clawgic.repository.ClawgicTournamentEntryRepository;
@@ -36,6 +39,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
@@ -72,6 +76,9 @@ class ClawgicTournamentServiceIntegrationTest {
 
     @Autowired
     private ClawgicTournamentEntryRepository clawgicTournamentEntryRepository;
+
+    @Autowired
+    private ClawgicMatchRepository clawgicMatchRepository;
 
     @Autowired
     private ClawgicPaymentAuthorizationRepository clawgicPaymentAuthorizationRepository;
@@ -266,6 +273,137 @@ class ClawgicTournamentServiceIntegrationTest {
         );
     }
 
+    @Test
+    void createMvpBracketBuildsThreeLinkedMatchesWithDeterministicSeeding() {
+        OffsetDateTime now = OffsetDateTime.now();
+        ClawgicTournament tournament = insertTournament(
+                "C19 deterministic bracket",
+                ClawgicTournamentStatus.SCHEDULED,
+                now.plusHours(2),
+                now.plusHours(1),
+                4
+        );
+
+        UUID seedOne = createUserAndAgentWithElo("0x1111111111111111111111111111111111111101", "seed one", 1310);
+        UUID seedTwo = createUserAndAgentWithElo("0x1111111111111111111111111111111111111102", "seed two", 1270);
+        UUID seedThree = createUserAndAgentWithElo("0x1111111111111111111111111111111111111103", "seed three", 1120);
+        UUID seedFour = createUserAndAgentWithElo("0x1111111111111111111111111111111111111104", "seed four", 980);
+
+        clawgicTournamentService.enterTournament(
+                tournament.getTournamentId(),
+                new ClawgicTournamentRequests.EnterTournamentRequest(seedThree)
+        );
+        clawgicTournamentService.enterTournament(
+                tournament.getTournamentId(),
+                new ClawgicTournamentRequests.EnterTournamentRequest(seedOne)
+        );
+        clawgicTournamentService.enterTournament(
+                tournament.getTournamentId(),
+                new ClawgicTournamentRequests.EnterTournamentRequest(seedFour)
+        );
+        clawgicTournamentService.enterTournament(
+                tournament.getTournamentId(),
+                new ClawgicTournamentRequests.EnterTournamentRequest(seedTwo)
+        );
+
+        var createdMatches = clawgicTournamentService.createMvpBracket(tournament.getTournamentId());
+
+        assertEquals(3, createdMatches.size());
+        assertEquals(1, createdMatches.get(0).bracketRound());
+        assertEquals(1, createdMatches.get(0).bracketPosition());
+        assertEquals(seedOne, createdMatches.get(0).agent1Id());
+        assertEquals(seedFour, createdMatches.get(0).agent2Id());
+        assertEquals(1, createdMatches.get(0).nextMatchAgentSlot());
+
+        assertEquals(1, createdMatches.get(1).bracketRound());
+        assertEquals(2, createdMatches.get(1).bracketPosition());
+        assertEquals(seedTwo, createdMatches.get(1).agent1Id());
+        assertEquals(seedThree, createdMatches.get(1).agent2Id());
+        assertEquals(2, createdMatches.get(1).nextMatchAgentSlot());
+
+        assertEquals(2, createdMatches.get(2).bracketRound());
+        assertEquals(1, createdMatches.get(2).bracketPosition());
+        assertNull(createdMatches.get(2).agent1Id());
+        assertNull(createdMatches.get(2).agent2Id());
+        assertNull(createdMatches.get(2).nextMatchId());
+        assertNull(createdMatches.get(2).nextMatchAgentSlot());
+
+        UUID finalMatchId = createdMatches.get(2).matchId();
+        assertEquals(finalMatchId, createdMatches.get(0).nextMatchId());
+        assertEquals(finalMatchId, createdMatches.get(1).nextMatchId());
+
+        ClawgicTournament persistedTournament =
+                clawgicTournamentRepository.findById(tournament.getTournamentId()).orElseThrow();
+        assertEquals(ClawgicTournamentStatus.LOCKED, persistedTournament.getStatus());
+
+        List<ClawgicTournamentEntry> seededEntries =
+                clawgicTournamentEntryRepository.findByTournamentIdOrderByCreatedAtAsc(tournament.getTournamentId());
+        assertEquals(4, seededEntries.size());
+        assertEquals(seedThree, seededEntries.get(0).getAgentId());
+        assertEquals(3, seededEntries.get(0).getSeedPosition());
+        assertEquals(seedOne, seededEntries.get(1).getAgentId());
+        assertEquals(1, seededEntries.get(1).getSeedPosition());
+        assertEquals(seedFour, seededEntries.get(2).getAgentId());
+        assertEquals(4, seededEntries.get(2).getSeedPosition());
+        assertEquals(seedTwo, seededEntries.get(3).getAgentId());
+        assertEquals(2, seededEntries.get(3).getSeedPosition());
+
+        List<ClawgicMatch> persistedMatches =
+                clawgicMatchRepository.findByTournamentIdOrderByBracketRoundAscBracketPositionAscCreatedAtAsc(
+                        tournament.getTournamentId()
+                );
+        assertEquals(3, persistedMatches.size());
+        assertEquals(ClawgicMatchStatus.SCHEDULED, persistedMatches.get(0).getStatus());
+        assertEquals(finalMatchId, persistedMatches.get(0).getNextMatchId());
+        assertEquals(1, persistedMatches.get(0).getNextMatchAgentSlot());
+    }
+
+    @Test
+    void createMvpBracketRejectsDuplicateGeneration() {
+        OffsetDateTime now = OffsetDateTime.now();
+        ClawgicTournament tournament = insertTournament(
+                "C19 duplicate bracket guard",
+                ClawgicTournamentStatus.SCHEDULED,
+                now.plusHours(2),
+                now.plusHours(1),
+                4
+        );
+
+        UUID first = createUserAndAgentWithElo("0x1111111111111111111111111111111111111201", "agent one", 1001);
+        UUID second = createUserAndAgentWithElo("0x1111111111111111111111111111111111111202", "agent two", 1002);
+        UUID third = createUserAndAgentWithElo("0x1111111111111111111111111111111111111203", "agent three", 1003);
+        UUID fourth = createUserAndAgentWithElo("0x1111111111111111111111111111111111111204", "agent four", 1004);
+
+        clawgicTournamentService.enterTournament(
+                tournament.getTournamentId(),
+                new ClawgicTournamentRequests.EnterTournamentRequest(first)
+        );
+        clawgicTournamentService.enterTournament(
+                tournament.getTournamentId(),
+                new ClawgicTournamentRequests.EnterTournamentRequest(second)
+        );
+        clawgicTournamentService.enterTournament(
+                tournament.getTournamentId(),
+                new ClawgicTournamentRequests.EnterTournamentRequest(third)
+        );
+        clawgicTournamentService.enterTournament(
+                tournament.getTournamentId(),
+                new ClawgicTournamentRequests.EnterTournamentRequest(fourth)
+        );
+
+        clawgicTournamentService.createMvpBracket(tournament.getTournamentId());
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                clawgicTournamentService.createMvpBracket(tournament.getTournamentId())
+        );
+
+        assertEquals(HttpStatus.CONFLICT, ex.getStatusCode());
+        assertEquals(
+                "409 CONFLICT \"Tournament is not ready for bracket generation: " + tournament.getTournamentId() + "\"",
+                ex.getMessage()
+        );
+    }
+
     private ClawgicTournament insertTournament(
             String topic,
             ClawgicTournamentStatus status,
@@ -302,6 +440,11 @@ class ClawgicTournamentServiceIntegrationTest {
         user.setCreatedAt(OffsetDateTime.now());
         user.setUpdatedAt(OffsetDateTime.now());
         clawgicUserRepository.saveAndFlush(user);
+    }
+
+    private UUID createUserAndAgentWithElo(String walletAddress, String name, int elo) {
+        createUser(walletAddress);
+        return createAgentWithElo(walletAddress, name, elo);
     }
 
     private UUID createAgentWithElo(String walletAddress, String name, int elo) {

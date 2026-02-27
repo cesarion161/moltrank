@@ -28,11 +28,23 @@ public class ClawgicMatch {
     @Column(name = "tournament_id", nullable = false, updatable = false)
     private UUID tournamentId;
 
-    @Column(name = "agent1_id", nullable = false, updatable = false)
+    @Column(name = "agent1_id")
     private UUID agent1Id;
 
-    @Column(name = "agent2_id", nullable = false, updatable = false)
+    @Column(name = "agent2_id")
     private UUID agent2Id;
+
+    @Column(name = "bracket_round")
+    private Integer bracketRound;
+
+    @Column(name = "bracket_position")
+    private Integer bracketPosition;
+
+    @Column(name = "next_match_id")
+    private UUID nextMatchId;
+
+    @Column(name = "next_match_agent_slot")
+    private Integer nextMatchAgentSlot;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 32)

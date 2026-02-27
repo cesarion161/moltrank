@@ -97,6 +97,8 @@ class ClawgicMatchRepositorySmokeTest {
         match.setTournamentId(tournament.getTournamentId());
         match.setAgent1Id(agent1Id);
         match.setAgent2Id(agent2Id);
+        match.setBracketRound(1);
+        match.setBracketPosition(1);
         match.setStatus(ClawgicMatchStatus.COMPLETED);
         match.setPhase("CONCLUSION");
         match.setTranscriptJson(transcript);
@@ -116,6 +118,8 @@ class ClawgicMatchRepositorySmokeTest {
 
         ClawgicMatch persisted = clawgicMatchRepository.findById(matchId).orElseThrow();
         assertEquals(ClawgicMatchStatus.COMPLETED, persisted.getStatus());
+        assertEquals(1, persisted.getBracketRound());
+        assertEquals(1, persisted.getBracketPosition());
         assertEquals("CONCLUSION", persisted.getPhase());
         assertEquals(agent1Id, persisted.getWinnerAgentId());
         assertEquals(1, persisted.getJudgeRetryCount());

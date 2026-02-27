@@ -1,6 +1,8 @@
 package com.moltrank.clawgic.controller;
 
+import com.moltrank.clawgic.dto.ClawgicMatchResponses;
 import com.moltrank.clawgic.dto.ClawgicTournamentResponses;
+import com.moltrank.clawgic.model.ClawgicMatchStatus;
 import com.moltrank.clawgic.model.ClawgicTournamentEntryStatus;
 import com.moltrank.clawgic.model.ClawgicTournamentStatus;
 import com.moltrank.clawgic.service.ClawgicTournamentService;
@@ -159,6 +161,39 @@ class ClawgicTournamentControllerTest {
                 .andExpect(status().isConflict());
     }
 
+    @Test
+    void createMvpBracketReturnsCreatedPayload() throws Exception {
+        UUID tournamentId = UUID.fromString("00000000-0000-0000-0000-000000000430");
+        UUID semifinalOneId = UUID.fromString("00000000-0000-0000-0000-000000000431");
+        UUID semifinalTwoId = UUID.fromString("00000000-0000-0000-0000-000000000432");
+        UUID finalId = UUID.fromString("00000000-0000-0000-0000-000000000433");
+        when(clawgicTournamentService.createMvpBracket(tournamentId))
+                .thenReturn(List.of(
+                        sampleMatchSummary(semifinalOneId, finalId, 1, 1),
+                        sampleMatchSummary(semifinalTwoId, finalId, 1, 2),
+                        sampleMatchSummary(finalId, null, 2, 1)
+                ));
+
+        mockMvc.perform(post("/api/clawgic/tournaments/{tournamentId}/bracket", tournamentId))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$[0].matchId").value(semifinalOneId.toString()))
+                .andExpect(jsonPath("$[0].bracketRound").value(1))
+                .andExpect(jsonPath("$[0].nextMatchId").value(finalId.toString()))
+                .andExpect(jsonPath("$[2].matchId").value(finalId.toString()))
+                .andExpect(jsonPath("$[2].bracketRound").value(2));
+    }
+
+    @Test
+    void createMvpBracketConflictReturnsConflict() throws Exception {
+        UUID tournamentId = UUID.fromString("00000000-0000-0000-0000-000000000434");
+        when(clawgicTournamentService.createMvpBracket(tournamentId))
+                .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT, "Tournament bracket already exists"));
+
+        mockMvc.perform(post("/api/clawgic/tournaments/{tournamentId}/bracket", tournamentId))
+                .andExpect(status().isConflict());
+    }
+
     private static ClawgicTournamentResponses.TournamentDetail sampleDetail(UUID tournamentId) {
         OffsetDateTime created = OffsetDateTime.parse("2026-05-01T12:00:00Z");
         return new ClawgicTournamentResponses.TournamentDetail(
@@ -205,6 +240,30 @@ class ClawgicTournamentControllerTest {
                 ClawgicTournamentEntryStatus.CONFIRMED,
                 null,
                 1000,
+                now,
+                now
+        );
+    }
+
+    private static ClawgicMatchResponses.MatchSummary sampleMatchSummary(
+            UUID matchId,
+            UUID nextMatchId,
+            int round,
+            int position
+    ) {
+        OffsetDateTime now = OffsetDateTime.parse("2026-05-02T12:00:00Z");
+        return new ClawgicMatchResponses.MatchSummary(
+                matchId,
+                UUID.fromString("00000000-0000-0000-0000-000000000430"),
+                round == 2 ? null : UUID.fromString("00000000-0000-0000-0000-000000000500"),
+                round == 2 ? null : UUID.fromString("00000000-0000-0000-0000-000000000501"),
+                round,
+                position,
+                nextMatchId,
+                nextMatchId == null ? null : position,
+                ClawgicMatchStatus.SCHEDULED,
+                null,
+                null,
                 now,
                 now
         );
