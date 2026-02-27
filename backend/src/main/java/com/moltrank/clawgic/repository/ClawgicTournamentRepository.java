@@ -2,6 +2,8 @@ package com.moltrank.clawgic.repository;
 
 import com.moltrank.clawgic.model.ClawgicTournament;
 import com.moltrank.clawgic.model.ClawgicTournamentStatus;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -12,6 +14,12 @@ import java.util.UUID;
 @Repository
 public interface ClawgicTournamentRepository extends JpaRepository<ClawgicTournament, UUID> {
     List<ClawgicTournament> findByStatusAndStartTimeAfterOrderByStartTimeAsc(
+            ClawgicTournamentStatus status,
+            OffsetDateTime now
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    List<ClawgicTournament> findByStatusAndStartTimeLessThanEqualOrderByStartTimeAsc(
             ClawgicTournamentStatus status,
             OffsetDateTime now
     );
