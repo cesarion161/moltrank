@@ -14,6 +14,7 @@ import com.moltrank.clawgic.provider.ClawgicProviderTurnResponse;
 import com.moltrank.clawgic.repository.ClawgicAgentRepository;
 import com.moltrank.clawgic.repository.ClawgicMatchRepository;
 import com.moltrank.clawgic.repository.ClawgicTournamentRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -29,6 +30,7 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeoutException;
 
 @Service
+@RequiredArgsConstructor
 public class ClawgicDebateExecutionService {
 
     private static final int TURNS_PER_PHASE = 2;
@@ -50,21 +52,8 @@ public class ClawgicDebateExecutionService {
     private final ClawgicTournamentRepository clawgicTournamentRepository;
     private final ClawgicAgentRepository clawgicAgentRepository;
     private final ClawgicDebateProviderGateway clawgicDebateProviderGateway;
+    private final ClawgicJudgeQueuePublisher clawgicJudgeQueuePublisher;
     private final ClawgicRuntimeProperties clawgicRuntimeProperties;
-
-    public ClawgicDebateExecutionService(
-            ClawgicMatchRepository clawgicMatchRepository,
-            ClawgicTournamentRepository clawgicTournamentRepository,
-            ClawgicAgentRepository clawgicAgentRepository,
-            ClawgicDebateProviderGateway clawgicDebateProviderGateway,
-            ClawgicRuntimeProperties clawgicRuntimeProperties
-    ) {
-        this.clawgicMatchRepository = clawgicMatchRepository;
-        this.clawgicTournamentRepository = clawgicTournamentRepository;
-        this.clawgicAgentRepository = clawgicAgentRepository;
-        this.clawgicDebateProviderGateway = clawgicDebateProviderGateway;
-        this.clawgicRuntimeProperties = clawgicRuntimeProperties;
-    }
 
     public ClawgicMatch executeMatch(UUID matchId) {
         ClawgicMatch match = clawgicMatchRepository.findById(matchId)
@@ -124,7 +113,9 @@ public class ClawgicDebateExecutionService {
         match.setPhase(DebatePhase.CONCLUSION);
         match.setJudgeRequestedAt(now);
         match.setUpdatedAt(now);
-        return clawgicMatchRepository.saveAndFlush(match);
+        ClawgicMatch pendingJudgeMatch = clawgicMatchRepository.saveAndFlush(match);
+        clawgicJudgeQueuePublisher.publishMatchReady(pendingJudgeMatch.getMatchId());
+        return pendingJudgeMatch;
     }
 
     private void markExecutionStarted(ClawgicMatch match, List<DebateTranscriptMessage> transcript) {

@@ -1,5 +1,6 @@
 package com.moltrank.clawgic.service;
 
+import com.moltrank.clawgic.config.ClawgicJudgeProperties;
 import com.moltrank.clawgic.model.ClawgicAgent;
 import com.moltrank.clawgic.model.ClawgicMatch;
 import com.moltrank.clawgic.model.ClawgicMatchStatus;
@@ -26,7 +27,10 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.UUID;
 import java.util.stream.IntStream;
 
@@ -52,7 +56,9 @@ import static org.mockito.Mockito.verify;
         "moltrank.ingestion.enabled=false",
         "moltrank.ingestion.run-on-startup=false",
         "clawgic.mock-provider=true",
-        "clawgic.debate.provider-timeout-seconds=1"
+        "clawgic.debate.provider-timeout-seconds=1",
+        "clawgic.judge.keys[0]=mock-judge-primary",
+        "clawgic.judge.keys[1]=mock-judge-secondary"
 })
 class ClawgicDebateExecutionServiceIntegrationTest {
 
@@ -71,12 +77,20 @@ class ClawgicDebateExecutionServiceIntegrationTest {
     @Autowired
     private ClawgicMatchRepository clawgicMatchRepository;
 
+    @Autowired
+    private ClawgicJudgeQueue clawgicJudgeQueue;
+
+    @Autowired
+    private ClawgicJudgeProperties clawgicJudgeProperties;
+
     @MockitoSpyBean
     private MockClawgicDebateProviderClient mockClawgicDebateProviderClient;
 
     @BeforeEach
     void resetSpies() {
         reset(mockClawgicDebateProviderClient);
+        clawgicJudgeQueue.setConsumer(_ -> {
+        });
     }
 
     @Test
@@ -217,6 +231,39 @@ class ClawgicDebateExecutionServiceIntegrationTest {
         assertTrue(persistedMatch.getForfeitReason().contains("failing_agent_id=" + agent1Id));
         assertEquals(0, DebateTranscriptJsonCodec.fromJson(persistedMatch.getTranscriptJson()).size());
         verify(mockClawgicDebateProviderClient, times(1)).generateTurn(any());
+    }
+
+    @Test
+    void executeMatchPublishesJudgeQueueMessagesForEachConfiguredJudgeKey() throws InterruptedException {
+        String walletOne = randomWalletAddress();
+        String walletTwo = randomWalletAddress();
+        createUser(walletOne);
+        createUser(walletTwo);
+
+        UUID agent1Id = createAgent(walletOne, "Queue Agent One");
+        UUID agent2Id = createAgent(walletTwo, "Queue Agent Two");
+        ClawgicTournament tournament = createTournament("Should queue publish one event per configured judge?");
+        ClawgicMatch scheduledMatch = createScheduledMatch(tournament.getTournamentId(), agent1Id, agent2Id);
+
+        CountDownLatch latch = new CountDownLatch(clawgicJudgeProperties.getKeys().size());
+        List<ClawgicJudgeQueueMessage> receivedMessages = new CopyOnWriteArrayList<>();
+        clawgicJudgeQueue.setConsumer(message -> {
+            if (!scheduledMatch.getMatchId().equals(message.matchId())) {
+                return;
+            }
+            receivedMessages.add(message);
+            latch.countDown();
+        });
+
+        clawgicDebateExecutionService.executeMatch(scheduledMatch.getMatchId());
+
+        assertTrue(latch.await(3, TimeUnit.SECONDS));
+        assertEquals(clawgicJudgeProperties.getKeys().size(), receivedMessages.size());
+        assertEquals(
+                clawgicJudgeProperties.getKeys().stream().sorted().toList(),
+                receivedMessages.stream().map(ClawgicJudgeQueueMessage::judgeKey).sorted().toList()
+        );
+        assertTrue(receivedMessages.stream().allMatch(message -> scheduledMatch.getMatchId().equals(message.matchId())));
     }
 
     private void createUser(String walletAddress) {

@@ -6,6 +6,7 @@ import org.springframework.boot.autoconfigure.context.ConfigurationPropertiesAut
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -62,6 +63,7 @@ class ClawgicConfigurationPropertiesTest {
             assertEquals("gpt-4o", judge.getModel());
             assertTrue(judge.isStrictJson());
             assertEquals(2, judge.getMaxRetries());
+            assertEquals(List.of("mock-judge-primary"), judge.getKeys());
 
             assertEquals("local-dev-v1", apiKeyEncryption.getActiveKeyId());
             assertEquals(4096, apiKeyEncryption.getMaxPlaintextLength());
@@ -98,6 +100,8 @@ class ClawgicConfigurationPropertiesTest {
                         "clawgic.provider.key-ref-models[team/openai/primary]=gpt-4.1",
                         "clawgic.judge.model=gpt-4.1",
                         "clawgic.judge.max-retries=4",
+                        "clawgic.judge.keys[0]=mock-judge-primary",
+                        "clawgic.judge.keys[1]=mock-judge-secondary",
                         "clawgic.agent-key-encryption.active-key-id=rotate-v2",
                         "clawgic.agent-key-encryption.keys.rotate-v2=ZmVkY2JhOTg3NjU0MzIxMGZlZGNiYTk4NzY1NDMyMTA=",
                         "clawgic.agent-key-encryption.max-plaintext-length=2048",
@@ -131,6 +135,7 @@ class ClawgicConfigurationPropertiesTest {
 
                     assertEquals("gpt-4.1", judge.getModel());
                     assertEquals(4, judge.getMaxRetries());
+                    assertEquals(List.of("mock-judge-primary", "mock-judge-secondary"), judge.getKeys());
 
                     assertEquals("rotate-v2", apiKeyEncryption.getActiveKeyId());
                     assertEquals(2048, apiKeyEncryption.getMaxPlaintextLength());

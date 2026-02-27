@@ -74,6 +74,8 @@ clawgic:
     strict-json: true
     max-retries: 2
     timeout-seconds: 30
+    keys:
+      - mock-judge-primary
 
   agent-key-encryption:
     active-key-id: local-dev-v1
