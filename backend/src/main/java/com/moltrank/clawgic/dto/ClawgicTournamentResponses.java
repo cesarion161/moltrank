@@ -22,6 +22,8 @@ public final class ClawgicTournamentResponses {
             OffsetDateTime entryCloseTime,
             BigDecimal baseEntryFeeUsdc,
             UUID winnerAgentId,
+            Integer matchesCompleted,
+            Integer matchesForfeited,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt
     ) {
@@ -37,6 +39,8 @@ public final class ClawgicTournamentResponses {
             OffsetDateTime entryCloseTime,
             BigDecimal baseEntryFeeUsdc,
             UUID winnerAgentId,
+            Integer matchesCompleted,
+            Integer matchesForfeited,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt,
             OffsetDateTime startedAt,

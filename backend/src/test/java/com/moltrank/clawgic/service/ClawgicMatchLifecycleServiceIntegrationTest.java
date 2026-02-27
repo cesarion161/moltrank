@@ -125,6 +125,7 @@ class ClawgicMatchLifecycleServiceIntegrationTest {
 
         assertEquals(1, summary.tournamentsActivated());
         assertEquals(0, summary.winnersPropagated());
+        assertEquals(0, summary.tournamentsCompleted());
         assertEquals(2, summary.matchesExecuted());
         assertTrue(summary.hasWork());
 
@@ -168,6 +169,7 @@ class ClawgicMatchLifecycleServiceIntegrationTest {
         assertFalse(summary.hasWork());
         assertEquals(0, summary.tournamentsActivated());
         assertEquals(0, summary.winnersPropagated());
+        assertEquals(0, summary.tournamentsCompleted());
         assertEquals(0, summary.matchesExecuted());
 
         ClawgicTournament persistedTournament =
@@ -227,6 +229,7 @@ class ClawgicMatchLifecycleServiceIntegrationTest {
 
         assertEquals(0, firstTick.matchesExecuted());
         assertEquals(1, firstTick.winnersPropagated());
+        assertEquals(0, firstTick.tournamentsCompleted());
 
         ClawgicMatch afterFirstTickFinal = clawgicMatchRepository.findById(finalMatch.getMatchId()).orElseThrow();
         assertEquals(semifinalOneWinner, afterFirstTickFinal.getAgent1Id());
@@ -244,12 +247,133 @@ class ClawgicMatchLifecycleServiceIntegrationTest {
 
         assertEquals(1, secondTick.matchesExecuted());
         assertTrue(secondTick.winnersPropagated() >= 1);
+        assertEquals(0, secondTick.tournamentsCompleted());
 
         ClawgicMatch afterSecondTickFinal = clawgicMatchRepository.findById(finalMatch.getMatchId()).orElseThrow();
         assertEquals(semifinalOneWinner, afterSecondTickFinal.getAgent1Id());
         assertEquals(semifinalTwoWinner, afterSecondTickFinal.getAgent2Id());
         assertEquals(ClawgicMatchStatus.PENDING_JUDGE, afterSecondTickFinal.getStatus());
         assertNotNull(afterSecondTickFinal.getJudgeRequestedAt());
+    }
+
+    @Test
+    void processLifecycleTickCompletesTournamentWhenFinalMatchIsCompleted() {
+        OffsetDateTime now = OffsetDateTime.now();
+        ClawgicTournament tournament = createTournament(ClawgicTournamentStatus.IN_PROGRESS, now.minusMinutes(5));
+
+        UUID semifinalOneWinner = createUserAndAgent("c29 complete semifinal one winner");
+        UUID semifinalOneLoser = createUserAndAgent("c29 complete semifinal one loser");
+        UUID semifinalTwoWinner = createUserAndAgent("c29 complete semifinal two winner");
+        UUID semifinalTwoLoser = createUserAndAgent("c29 complete semifinal two loser");
+
+        ClawgicMatch finalMatch = createMatch(
+                tournament.getTournamentId(),
+                semifinalOneWinner,
+                semifinalTwoWinner,
+                2,
+                1,
+                ClawgicMatchStatus.COMPLETED,
+                null,
+                null,
+                semifinalOneWinner
+        );
+
+        createMatch(
+                tournament.getTournamentId(),
+                semifinalOneWinner,
+                semifinalOneLoser,
+                1,
+                1,
+                ClawgicMatchStatus.COMPLETED,
+                finalMatch.getMatchId(),
+                1,
+                semifinalOneWinner
+        );
+        createMatch(
+                tournament.getTournamentId(),
+                semifinalTwoWinner,
+                semifinalTwoLoser,
+                1,
+                2,
+                ClawgicMatchStatus.FORFEITED,
+                finalMatch.getMatchId(),
+                2,
+                semifinalTwoWinner
+        );
+
+        ClawgicMatchLifecycleService.TickSummary summary = clawgicMatchLifecycleService.processLifecycleTick();
+
+        assertEquals(0, summary.matchesExecuted());
+        assertEquals(0, summary.winnersPropagated());
+        assertEquals(1, summary.tournamentsCompleted());
+
+        ClawgicTournament persistedTournament =
+                clawgicTournamentRepository.findById(tournament.getTournamentId()).orElseThrow();
+        assertEquals(ClawgicTournamentStatus.COMPLETED, persistedTournament.getStatus());
+        assertEquals(semifinalOneWinner, persistedTournament.getWinnerAgentId());
+        assertEquals(2, persistedTournament.getMatchesCompleted());
+        assertEquals(1, persistedTournament.getMatchesForfeited());
+        assertNotNull(persistedTournament.getCompletedAt());
+    }
+
+    @Test
+    void processLifecycleTickCompletesTournamentWhenFinalMatchIsForfeited() {
+        OffsetDateTime now = OffsetDateTime.now();
+        ClawgicTournament tournament = createTournament(ClawgicTournamentStatus.IN_PROGRESS, now.minusMinutes(5));
+
+        UUID semifinalOneWinner = createUserAndAgent("c29 forfeit semifinal one winner");
+        UUID semifinalOneLoser = createUserAndAgent("c29 forfeit semifinal one loser");
+        UUID semifinalTwoWinner = createUserAndAgent("c29 forfeit semifinal two winner");
+        UUID semifinalTwoLoser = createUserAndAgent("c29 forfeit semifinal two loser");
+
+        ClawgicMatch finalMatch = createMatch(
+                tournament.getTournamentId(),
+                semifinalOneWinner,
+                semifinalTwoWinner,
+                2,
+                1,
+                ClawgicMatchStatus.FORFEITED,
+                null,
+                null,
+                semifinalTwoWinner
+        );
+
+        createMatch(
+                tournament.getTournamentId(),
+                semifinalOneWinner,
+                semifinalOneLoser,
+                1,
+                1,
+                ClawgicMatchStatus.COMPLETED,
+                finalMatch.getMatchId(),
+                1,
+                semifinalOneWinner
+        );
+        createMatch(
+                tournament.getTournamentId(),
+                semifinalTwoWinner,
+                semifinalTwoLoser,
+                1,
+                2,
+                ClawgicMatchStatus.COMPLETED,
+                finalMatch.getMatchId(),
+                2,
+                semifinalTwoWinner
+        );
+
+        ClawgicMatchLifecycleService.TickSummary summary = clawgicMatchLifecycleService.processLifecycleTick();
+
+        assertEquals(0, summary.matchesExecuted());
+        assertEquals(0, summary.winnersPropagated());
+        assertEquals(1, summary.tournamentsCompleted());
+
+        ClawgicTournament persistedTournament =
+                clawgicTournamentRepository.findById(tournament.getTournamentId()).orElseThrow();
+        assertEquals(ClawgicTournamentStatus.COMPLETED, persistedTournament.getStatus());
+        assertEquals(semifinalTwoWinner, persistedTournament.getWinnerAgentId());
+        assertEquals(2, persistedTournament.getMatchesCompleted());
+        assertEquals(1, persistedTournament.getMatchesForfeited());
+        assertNotNull(persistedTournament.getCompletedAt());
     }
 
     private ClawgicTournament createTournament(ClawgicTournamentStatus status, OffsetDateTime startTime) {

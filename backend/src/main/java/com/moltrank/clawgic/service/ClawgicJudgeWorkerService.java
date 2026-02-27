@@ -48,6 +48,7 @@ public class ClawgicJudgeWorkerService {
     private final ClawgicMatchJudgementRepository clawgicMatchJudgementRepository;
     private final ClawgicJudgeProviderGateway clawgicJudgeProviderGateway;
     private final ClawgicAgentEloService clawgicAgentEloService;
+    private final ClawgicTournamentProgressionService clawgicTournamentProgressionService;
     private final ClawgicJudgeProperties clawgicJudgeProperties;
     private final TransactionTemplate transactionTemplate;
 
@@ -135,7 +136,8 @@ public class ClawgicJudgeWorkerService {
             clawgicMatchJudgementRepository.save(acceptedJudgement);
 
             applyMvpMergePolicy(match, now);
-            clawgicMatchRepository.save(match);
+            clawgicMatchRepository.saveAndFlush(match);
+            clawgicTournamentProgressionService.completeTournamentIfResolved(match.getTournamentId(), now);
         } catch (IllegalArgumentException ex) {
             persistFailureAndRetry(
                     match,

@@ -28,9 +28,10 @@ public class ClawgicMatchLifecycleScheduler {
         ClawgicMatchLifecycleService.TickSummary tickSummary = clawgicMatchLifecycleService.processLifecycleTick();
         if (tickSummary.hasWork()) {
             log.info(
-                    "Clawgic worker tick: tournamentsActivated={}, winnersPropagated={}, matchesExecuted={}",
+                    "Clawgic worker tick: tournamentsActivated={}, winnersPropagated={}, tournamentsCompleted={}, matchesExecuted={}",
                     tickSummary.tournamentsActivated(),
                     tickSummary.winnersPropagated(),
+                    tickSummary.tournamentsCompleted(),
                     tickSummary.matchesExecuted()
             );
         } else {

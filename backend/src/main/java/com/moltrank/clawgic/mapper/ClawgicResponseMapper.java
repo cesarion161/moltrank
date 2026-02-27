@@ -98,6 +98,8 @@ public class ClawgicResponseMapper {
                 tournament.getEntryCloseTime(),
                 tournament.getBaseEntryFeeUsdc(),
                 tournament.getWinnerAgentId(),
+                tournament.getMatchesCompleted(),
+                tournament.getMatchesForfeited(),
                 tournament.getCreatedAt(),
                 tournament.getUpdatedAt()
         );
@@ -122,6 +124,8 @@ public class ClawgicResponseMapper {
                 tournament.getEntryCloseTime(),
                 tournament.getBaseEntryFeeUsdc(),
                 tournament.getWinnerAgentId(),
+                tournament.getMatchesCompleted(),
+                tournament.getMatchesForfeited(),
                 tournament.getCreatedAt(),
                 tournament.getUpdatedAt(),
                 tournament.getStartedAt(),

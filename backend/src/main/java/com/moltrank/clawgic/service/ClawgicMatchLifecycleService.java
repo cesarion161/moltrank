@@ -30,11 +30,13 @@ public class ClawgicMatchLifecycleService {
     private final ClawgicTournamentRepository clawgicTournamentRepository;
     private final ClawgicMatchRepository clawgicMatchRepository;
     private final ClawgicDebateExecutionService clawgicDebateExecutionService;
+    private final ClawgicTournamentProgressionService clawgicTournamentProgressionService;
     private final TransactionTemplate transactionTemplate;
 
     public TickSummary processLifecycleTick() {
         int tournamentsActivated = runIntInTransaction(this::activateDueTournaments);
         int winnersPropagated = runIntInTransaction(this::propagateResolvedMatchWinners);
+        int tournamentsCompleted = runIntInTransaction(this::completeResolvedTournaments);
 
         int matchesExecuted = 0;
         for (int i = 0; i < MAX_MATCH_EXECUTIONS_PER_TICK; i++) {
@@ -44,9 +46,10 @@ public class ClawgicMatchLifecycleService {
             }
             matchesExecuted++;
             winnersPropagated += runIntInTransaction(this::propagateResolvedMatchWinners);
+            tournamentsCompleted += runIntInTransaction(this::completeResolvedTournaments);
         }
 
-        return new TickSummary(tournamentsActivated, winnersPropagated, matchesExecuted);
+        return new TickSummary(tournamentsActivated, winnersPropagated, tournamentsCompleted, matchesExecuted);
     }
 
     private int activateDueTournaments() {
@@ -116,6 +119,23 @@ public class ClawgicMatchLifecycleService {
         }
 
         return propagated;
+    }
+
+    private int completeResolvedTournaments() {
+        List<ClawgicTournament> inProgressTournaments =
+                clawgicTournamentRepository.findByStatusOrderByStartTimeAsc(ClawgicTournamentStatus.IN_PROGRESS);
+        if (inProgressTournaments.isEmpty()) {
+            return 0;
+        }
+
+        int completed = 0;
+        OffsetDateTime now = OffsetDateTime.now();
+        for (ClawgicTournament tournament : inProgressTournaments) {
+            if (clawgicTournamentProgressionService.completeTournamentIfResolved(tournament.getTournamentId(), now)) {
+                completed++;
+            }
+        }
+        return completed;
     }
 
     private boolean applyWinnerToNextMatch(ClawgicMatch resolvedMatch, ClawgicMatch nextMatch) {
@@ -190,7 +210,11 @@ public class ClawgicMatchLifecycleService {
             return false;
         }
 
-        clawgicDebateExecutionService.executeMatch(readyMatch.getMatchId());
+        ClawgicMatch executedMatch = clawgicDebateExecutionService.executeMatch(readyMatch.getMatchId());
+        clawgicTournamentProgressionService.completeTournamentIfResolved(
+                executedMatch.getTournamentId(),
+                OffsetDateTime.now()
+        );
         return true;
     }
 
@@ -207,10 +231,11 @@ public class ClawgicMatchLifecycleService {
     public record TickSummary(
             int tournamentsActivated,
             int winnersPropagated,
+            int tournamentsCompleted,
             int matchesExecuted
     ) {
         public boolean hasWork() {
-            return tournamentsActivated > 0 || winnersPropagated > 0 || matchesExecuted > 0;
+            return tournamentsActivated > 0 || winnersPropagated > 0 || tournamentsCompleted > 0 || matchesExecuted > 0;
         }
     }
 }

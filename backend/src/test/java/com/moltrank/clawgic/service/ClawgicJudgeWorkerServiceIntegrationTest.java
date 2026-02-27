@@ -205,6 +205,62 @@ class ClawgicJudgeWorkerServiceIntegrationTest {
         verify(mockClawgicJudgeProviderClient, times(2)).evaluate(any());
     }
 
+    @Test
+    void queueConsumerCompletesTournamentWhenFinalMatchVerdictIsAccepted() throws InterruptedException {
+        UUID semifinalOneWinner = createUserAndAgent("C29 semifinal one winner");
+        UUID semifinalOneLoser = createUserAndAgent("C29 semifinal one loser");
+        UUID semifinalTwoWinner = createUserAndAgent("C29 semifinal two winner");
+        UUID semifinalTwoLoser = createUserAndAgent("C29 semifinal two loser");
+        ClawgicTournament tournament = createTournament("Should final judgement complete the full tournament?");
+
+        UUID finalMatchId = UUID.randomUUID();
+        ClawgicMatch finalPendingJudgeMatch = createPendingJudgeMatch(
+                tournament.getTournamentId(),
+                semifinalOneWinner,
+                semifinalTwoWinner,
+                finalMatchId,
+                2,
+                1
+        );
+        createResolvedMatch(
+                tournament.getTournamentId(),
+                semifinalOneWinner,
+                semifinalOneLoser,
+                1,
+                1,
+                ClawgicMatchStatus.COMPLETED,
+                finalMatchId,
+                1,
+                semifinalOneWinner
+        );
+        createResolvedMatch(
+                tournament.getTournamentId(),
+                semifinalTwoWinner,
+                semifinalTwoLoser,
+                1,
+                2,
+                ClawgicMatchStatus.FORFEITED,
+                finalMatchId,
+                2,
+                semifinalTwoWinner
+        );
+
+        clawgicJudgeQueue.enqueue(new ClawgicJudgeQueueMessage(finalPendingJudgeMatch.getMatchId(), "mock-judge-primary"));
+
+        ClawgicTournament completedTournament = awaitTournament(
+                tournament.getTournamentId(),
+                persisted -> persisted.getStatus() == ClawgicTournamentStatus.COMPLETED,
+                DEFAULT_AWAIT_TIMEOUT
+        );
+        ClawgicMatch completedFinal = clawgicMatchRepository.findById(finalPendingJudgeMatch.getMatchId()).orElseThrow();
+
+        assertEquals(ClawgicTournamentStatus.COMPLETED, completedTournament.getStatus());
+        assertNotNull(completedTournament.getCompletedAt());
+        assertEquals(completedFinal.getWinnerAgentId(), completedTournament.getWinnerAgentId());
+        assertEquals(2, completedTournament.getMatchesCompleted());
+        assertEquals(1, completedTournament.getMatchesForfeited());
+    }
+
     private ClawgicMatch awaitMatch(
             UUID matchId,
             Predicate<ClawgicMatch> condition,
@@ -219,6 +275,22 @@ class ClawgicJudgeWorkerServiceIntegrationTest {
             Thread.sleep(50);
         }
         throw new AssertionError("Timed out waiting for match condition to pass for " + matchId);
+    }
+
+    private ClawgicTournament awaitTournament(
+            UUID tournamentId,
+            Predicate<ClawgicTournament> condition,
+            Duration timeout
+    ) throws InterruptedException {
+        OffsetDateTime deadline = OffsetDateTime.now().plus(timeout);
+        while (OffsetDateTime.now().isBefore(deadline)) {
+            ClawgicTournament tournament = clawgicTournamentRepository.findById(tournamentId).orElseThrow();
+            if (condition.test(tournament)) {
+                return tournament;
+            }
+            Thread.sleep(50);
+        }
+        throw new AssertionError("Timed out waiting for tournament condition to pass for " + tournamentId);
     }
 
     private void awaitCondition(BooleanSupplier condition, Duration timeout) throws InterruptedException {
@@ -281,14 +353,25 @@ class ClawgicJudgeWorkerServiceIntegrationTest {
     }
 
     private ClawgicMatch createPendingJudgeMatch(UUID tournamentId, UUID agent1Id, UUID agent2Id) {
+        return createPendingJudgeMatch(tournamentId, agent1Id, agent2Id, UUID.randomUUID(), 1, 1);
+    }
+
+    private ClawgicMatch createPendingJudgeMatch(
+            UUID tournamentId,
+            UUID agent1Id,
+            UUID agent2Id,
+            UUID matchId,
+            int bracketRound,
+            int bracketPosition
+    ) {
         OffsetDateTime now = OffsetDateTime.now();
         ClawgicMatch match = new ClawgicMatch();
-        match.setMatchId(UUID.randomUUID());
+        match.setMatchId(matchId);
         match.setTournamentId(tournamentId);
         match.setAgent1Id(agent1Id);
         match.setAgent2Id(agent2Id);
-        match.setBracketRound(1);
-        match.setBracketPosition(1);
+        match.setBracketRound(bracketRound);
+        match.setBracketPosition(bracketPosition);
         match.setStatus(ClawgicMatchStatus.PENDING_JUDGE);
         match.setPhase(DebatePhase.CONCLUSION);
         match.setTranscriptJson(DebateTranscriptJsonCodec.toJson(List.of(
@@ -307,6 +390,48 @@ class ClawgicJudgeWorkerServiceIntegrationTest {
         match.setJudgeRequestedAt(now.minusSeconds(20));
         match.setCreatedAt(now.minusMinutes(3));
         match.setUpdatedAt(now.minusMinutes(1));
+        return clawgicMatchRepository.saveAndFlush(match);
+    }
+
+    private ClawgicMatch createResolvedMatch(
+            UUID tournamentId,
+            UUID agent1Id,
+            UUID agent2Id,
+            int bracketRound,
+            int bracketPosition,
+            ClawgicMatchStatus status,
+            UUID nextMatchId,
+            Integer nextMatchAgentSlot,
+            UUID winnerAgentId
+    ) {
+        OffsetDateTime now = OffsetDateTime.now();
+        ClawgicMatch match = new ClawgicMatch();
+        match.setMatchId(UUID.randomUUID());
+        match.setTournamentId(tournamentId);
+        match.setAgent1Id(agent1Id);
+        match.setAgent2Id(agent2Id);
+        match.setBracketRound(bracketRound);
+        match.setBracketPosition(bracketPosition);
+        match.setNextMatchId(nextMatchId);
+        match.setNextMatchAgentSlot(nextMatchAgentSlot);
+        match.setStatus(status);
+        match.setWinnerAgentId(winnerAgentId);
+        match.setPhase(DebatePhase.CONCLUSION);
+        match.setTranscriptJson(DebateTranscriptJsonCodec.toJson(List.of()));
+        match.setJudgeRetryCount(0);
+        match.setStartedAt(now.minusMinutes(5));
+        match.setCreatedAt(now.minusMinutes(6));
+        match.setUpdatedAt(now.minusMinutes(4));
+
+        if (status == ClawgicMatchStatus.COMPLETED) {
+            match.setJudgedAt(now.minusMinutes(4));
+            match.setCompletedAt(now.minusMinutes(4));
+            match.setJudgeResultJson(JsonNodeFactory.instance.objectNode().put("winner_id", winnerAgentId.toString()));
+        } else if (status == ClawgicMatchStatus.FORFEITED) {
+            match.setForfeitReason("TEST_FORFEIT");
+            match.setForfeitedAt(now.minusMinutes(4));
+        }
+
         return clawgicMatchRepository.saveAndFlush(match);
     }
 

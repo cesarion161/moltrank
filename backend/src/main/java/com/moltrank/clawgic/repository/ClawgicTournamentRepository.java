@@ -4,7 +4,9 @@ import com.moltrank.clawgic.model.ClawgicTournament;
 import com.moltrank.clawgic.model.ClawgicTournamentStatus;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
@@ -18,9 +20,15 @@ public interface ClawgicTournamentRepository extends JpaRepository<ClawgicTourna
             OffsetDateTime now
     );
 
+    List<ClawgicTournament> findByStatusOrderByStartTimeAsc(ClawgicTournamentStatus status);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     List<ClawgicTournament> findByStatusAndStartTimeLessThanEqualOrderByStartTimeAsc(
             ClawgicTournamentStatus status,
             OffsetDateTime now
     );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select t from ClawgicTournament t where t.tournamentId = :tournamentId")
+    java.util.Optional<ClawgicTournament> findByTournamentIdForUpdate(@Param("tournamentId") UUID tournamentId);
 }

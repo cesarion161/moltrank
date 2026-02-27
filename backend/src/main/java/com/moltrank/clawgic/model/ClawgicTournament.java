@@ -48,6 +48,12 @@ public class ClawgicTournament {
     @Column(name = "winner_agent_id")
     private UUID winnerAgentId;
 
+    @Column(name = "matches_completed", nullable = false)
+    private Integer matchesCompleted = 0;
+
+    @Column(name = "matches_forfeited", nullable = false)
+    private Integer matchesForfeited = 0;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt = OffsetDateTime.now();
 

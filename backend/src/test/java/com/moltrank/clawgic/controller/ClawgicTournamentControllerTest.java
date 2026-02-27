@@ -206,6 +206,8 @@ class ClawgicTournamentControllerTest {
                 OffsetDateTime.parse("2026-06-01T13:00:00Z"),
                 new BigDecimal("5.250000"),
                 null,
+                0,
+                0,
                 created,
                 created,
                 null,
@@ -225,6 +227,8 @@ class ClawgicTournamentControllerTest {
                 OffsetDateTime.parse("2026-06-01T13:00:00Z"),
                 new BigDecimal("5.000000"),
                 null,
+                0,
+                0,
                 created,
                 created
         );
