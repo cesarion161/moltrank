@@ -3,6 +3,8 @@ package com.moltrank.clawgic.repository;
 import com.moltrank.clawgic.model.ClawgicMatchJudgement;
 import com.moltrank.clawgic.model.ClawgicMatchJudgementStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -25,4 +27,15 @@ public interface ClawgicMatchJudgementRepository extends JpaRepository<ClawgicMa
     );
 
     boolean existsByMatchIdAndJudgeKeyAndAttempt(UUID matchId, String judgeKey, Integer attempt);
+
+    @Query("""
+            select coalesce(max(j.attempt), 0)
+            from ClawgicMatchJudgement j
+            where j.matchId = :matchId
+              and j.judgeKey = :judgeKey
+            """)
+    int findMaxAttemptByMatchIdAndJudgeKey(
+            @Param("matchId") UUID matchId,
+            @Param("judgeKey") String judgeKey
+    );
 }
