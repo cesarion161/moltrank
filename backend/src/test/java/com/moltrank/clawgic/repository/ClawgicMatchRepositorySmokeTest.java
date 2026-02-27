@@ -3,6 +3,7 @@ package com.moltrank.clawgic.repository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.moltrank.clawgic.model.ClawgicAgent;
 import com.moltrank.clawgic.model.ClawgicMatch;
 import com.moltrank.clawgic.model.ClawgicMatchStatus;
@@ -100,12 +101,17 @@ class ClawgicMatchRepositorySmokeTest {
                 )
         ));
 
-        var judgeResult = OBJECT_MAPPER.createObjectNode();
-        judgeResult.put("winner_id", agent1Id.toString());
-        judgeResult.put("reasoning", "Agent1 directly addressed reproducibility tradeoffs.");
-        var scores = judgeResult.putObject("scores");
-        scores.put("agent1_logic", 9);
-        scores.put("agent2_logic", 7);
+        ObjectNode judgeResultJson = OBJECT_MAPPER.createObjectNode();
+        judgeResultJson.put("winner_id", agent1Id.toString());
+        judgeResultJson.put("reasoning", "Agent1 directly addressed reproducibility tradeoffs.");
+        ObjectNode agent1Score = judgeResultJson.putObject("agent_1");
+        agent1Score.put("logic", 9);
+        agent1Score.put("persona_adherence", 8);
+        agent1Score.put("rebuttal_strength", 9);
+        ObjectNode agent2Score = judgeResultJson.putObject("agent_2");
+        agent2Score.put("logic", 7);
+        agent2Score.put("persona_adherence", 6);
+        agent2Score.put("rebuttal_strength", 7);
 
         ClawgicMatch match = new ClawgicMatch();
         UUID matchId = UUID.randomUUID();
@@ -118,7 +124,7 @@ class ClawgicMatchRepositorySmokeTest {
         match.setStatus(ClawgicMatchStatus.COMPLETED);
         match.setPhase(DebatePhase.CONCLUSION);
         match.setTranscriptJson(transcript);
-        match.setJudgeResultJson(judgeResult);
+        match.setJudgeResultJson(judgeResultJson);
         match.setWinnerAgentId(agent1Id);
         match.setJudgeRetryCount(1);
         match.setExecutionDeadlineAt(now.plusMinutes(10));
@@ -140,7 +146,7 @@ class ClawgicMatchRepositorySmokeTest {
         assertEquals(agent1Id, persisted.getWinnerAgentId());
         assertEquals(1, persisted.getJudgeRetryCount());
         assertJsonEquals(transcript, persisted.getTranscriptJson());
-        assertJsonEquals(judgeResult, persisted.getJudgeResultJson());
+        assertJsonEquals(judgeResultJson, persisted.getJudgeResultJson());
 
         List<ClawgicMatch> matches =
                 clawgicMatchRepository.findByTournamentIdOrderByCreatedAtAsc(tournament.getTournamentId());
