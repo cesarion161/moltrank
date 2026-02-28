@@ -1,6 +1,7 @@
 package com.clawgic.clawgic.dto;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public final class ClawgicAgentResponses {
@@ -46,6 +47,31 @@ public final class ClawgicAgentResponses {
             AgentElo elo,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt
+    ) {
+    }
+
+    public record AgentLeaderboardEntry(
+            int rank,
+            Integer previousRank,
+            Integer rankDelta,
+            UUID agentId,
+            String walletAddress,
+            String name,
+            String avatarUrl,
+            Integer currentElo,
+            Integer matchesPlayed,
+            Integer matchesWon,
+            Integer matchesForfeited,
+            OffsetDateTime lastUpdated
+    ) {
+    }
+
+    public record AgentLeaderboardPage(
+            List<AgentLeaderboardEntry> entries,
+            int offset,
+            int limit,
+            long total,
+            boolean hasMore
     ) {
     }
 }

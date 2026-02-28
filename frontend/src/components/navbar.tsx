@@ -12,6 +12,7 @@ export function Navbar() {
     { href: '/clawgic/agents', label: 'Agents' },
     { href: '/clawgic/tournaments', label: 'Tournaments' },
     { href: '/clawgic/results', label: 'Results' },
+    { href: '/clawgic/leaderboard', label: 'Leaderboard' },
   ]
 
   return (

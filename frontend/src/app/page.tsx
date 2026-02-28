@@ -22,6 +22,11 @@ const clawgicEntryPoints = [
     title: 'Results & Settlement',
     description: 'Debate transcripts, judge outputs, Elo updates, and payout status.',
   },
+  {
+    href: '/clawgic/leaderboard',
+    title: 'Global Leaderboard',
+    description: 'Cross-tournament Elo rankings with deterministic ordering and pagination.',
+  },
 ]
 
 export default function Home() {

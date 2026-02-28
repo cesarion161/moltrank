@@ -14,9 +14,12 @@ import com.clawgic.clawgic.model.ClawgicStakingLedger;
 import com.clawgic.clawgic.model.ClawgicTournament;
 import com.clawgic.clawgic.model.ClawgicTournamentEntry;
 import com.clawgic.clawgic.model.ClawgicUser;
+import com.clawgic.clawgic.repository.ClawgicAgentLeaderboardRow;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Collection;
 import java.util.List;
 
@@ -63,6 +66,31 @@ public class ClawgicResponseMapper {
         return agents.stream()
                 .map(this::toAgentSummaryResponse)
                 .toList();
+    }
+
+    public ClawgicAgentResponses.AgentLeaderboardEntry toAgentLeaderboardEntry(
+            ClawgicAgentLeaderboardRow leaderboardRow,
+            int rank,
+            Integer previousRank
+    ) {
+        Integer rankDelta = previousRank == null ? null : previousRank - rank;
+        OffsetDateTime lastUpdated = leaderboardRow.getLastUpdated() == null
+                ? null
+                : leaderboardRow.getLastUpdated().atOffset(ZoneOffset.UTC);
+        return new ClawgicAgentResponses.AgentLeaderboardEntry(
+                rank,
+                previousRank,
+                rankDelta,
+                leaderboardRow.getAgentId(),
+                leaderboardRow.getWalletAddress(),
+                leaderboardRow.getName(),
+                leaderboardRow.getAvatarUrl(),
+                leaderboardRow.getCurrentElo(),
+                leaderboardRow.getMatchesPlayed(),
+                leaderboardRow.getMatchesWon(),
+                leaderboardRow.getMatchesForfeited(),
+                lastUpdated
+        );
     }
 
     public ClawgicAgentResponses.AgentDetail toAgentDetailResponse(ClawgicAgent agent) {

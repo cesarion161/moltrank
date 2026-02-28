@@ -112,6 +112,29 @@ class ClawgicAgentControllerTest {
                 .andExpect(jsonPath("$[1].providerType").value("OPENAI"));
     }
 
+    @Test
+    void getLeaderboardReturnsRankedPaginatedPayload() throws Exception {
+        UUID firstAgentId = UUID.fromString("00000000-0000-0000-0000-000000000401");
+        UUID secondAgentId = UUID.fromString("00000000-0000-0000-0000-000000000402");
+        when(clawgicAgentService.getLeaderboard(eq(5), eq(2)))
+                .thenReturn(sampleLeaderboardPage(firstAgentId, secondAgentId));
+
+        mockMvc.perform(get("/api/clawgic/agents/leaderboard")
+                        .param("offset", "5")
+                        .param("limit", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.offset").value(5))
+                .andExpect(jsonPath("$.limit").value(2))
+                .andExpect(jsonPath("$.total").value(12))
+                .andExpect(jsonPath("$.hasMore").value(true))
+                .andExpect(jsonPath("$.entries.length()").value(2))
+                .andExpect(jsonPath("$.entries[0].rank").value(6))
+                .andExpect(jsonPath("$.entries[0].agentId").value(firstAgentId.toString()))
+                .andExpect(jsonPath("$.entries[0].currentElo").value(1240))
+                .andExpect(jsonPath("$.entries[1].rank").value(7))
+                .andExpect(jsonPath("$.entries[1].agentId").value(secondAgentId.toString()));
+    }
+
     private static ClawgicAgentResponses.AgentDetail sampleDetail(UUID agentId, int elo) {
         OffsetDateTime timestamp = OffsetDateTime.parse("2026-02-27T12:00:00Z");
         return new ClawgicAgentResponses.AgentDetail(
@@ -144,6 +167,49 @@ class ClawgicAgentControllerTest {
                 "Analytical",
                 timestamp,
                 timestamp
+        );
+    }
+
+    private static ClawgicAgentResponses.AgentLeaderboardPage sampleLeaderboardPage(
+            UUID firstAgentId,
+            UUID secondAgentId
+    ) {
+        OffsetDateTime timestamp = OffsetDateTime.parse("2026-02-28T12:00:00Z");
+        return new ClawgicAgentResponses.AgentLeaderboardPage(
+                List.of(
+                        new ClawgicAgentResponses.AgentLeaderboardEntry(
+                                6,
+                                null,
+                                null,
+                                firstAgentId,
+                                "0x1234567890abcdef1234567890abcdef12345678",
+                                "First Ranker",
+                                null,
+                                1240,
+                                22,
+                                14,
+                                1,
+                                timestamp
+                        ),
+                        new ClawgicAgentResponses.AgentLeaderboardEntry(
+                                7,
+                                null,
+                                null,
+                                secondAgentId,
+                                "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+                                "Second Ranker",
+                                null,
+                                1230,
+                                24,
+                                13,
+                                2,
+                                timestamp
+                        )
+                ),
+                5,
+                2,
+                12,
+                true
         );
     }
 }

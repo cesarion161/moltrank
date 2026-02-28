@@ -42,6 +42,14 @@ public class ClawgicAgentController {
         return ResponseEntity.ok(clawgicAgentService.listAgents(walletAddress));
     }
 
+    @GetMapping("/leaderboard")
+    public ResponseEntity<ClawgicAgentResponses.AgentLeaderboardPage> getLeaderboard(
+            @RequestParam(defaultValue = "0") int offset,
+            @RequestParam(defaultValue = "25") int limit
+    ) {
+        return ResponseEntity.ok(clawgicAgentService.getLeaderboard(offset, limit));
+    }
+
     @GetMapping("/{agentId}")
     public ResponseEntity<ClawgicAgentResponses.AgentDetail> getAgent(@PathVariable UUID agentId) {
         return ResponseEntity.ok(clawgicAgentService.getAgent(agentId));

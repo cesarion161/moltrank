@@ -21,5 +21,9 @@ describe('Home page', () => {
       'href',
       '/clawgic/tournaments'
     )
+    expect(screen.getByRole('link', { name: /Global Leaderboard/i })).toHaveAttribute(
+      'href',
+      '/clawgic/leaderboard'
+    )
   })
 })

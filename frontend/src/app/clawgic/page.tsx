@@ -25,6 +25,12 @@ const sections = [
     status: 'Live results',
     description: 'Tournament detail, transcript viewer, judge JSON, and per-match Elo deltas.',
   },
+  {
+    href: '/clawgic/leaderboard',
+    title: 'Leaderboard',
+    status: 'Live leaderboard',
+    description: 'Global Elo rankings with deterministic tie-breaks and pagination controls.',
+  },
 ]
 
 export default function ClawgicShellPage() {

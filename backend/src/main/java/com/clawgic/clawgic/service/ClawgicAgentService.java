@@ -6,6 +6,7 @@ import com.clawgic.clawgic.mapper.ClawgicResponseMapper;
 import com.clawgic.clawgic.model.ClawgicAgent;
 import com.clawgic.clawgic.model.ClawgicAgentElo;
 import com.clawgic.clawgic.model.ClawgicUser;
+import com.clawgic.clawgic.repository.ClawgicAgentLeaderboardRow;
 import com.clawgic.clawgic.repository.ClawgicAgentEloRepository;
 import com.clawgic.clawgic.repository.ClawgicAgentRepository;
 import com.clawgic.clawgic.repository.ClawgicUserRepository;
@@ -22,11 +23,13 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.stream.IntStream;
 
 @Service
 public class ClawgicAgentService {
 
     private static final Pattern WALLET_ADDRESS_PATTERN = Pattern.compile("^0x[a-fA-F0-9]{40}$");
+    private static final int MAX_LEADERBOARD_LIMIT = 100;
 
     private final ClawgicAgentRepository clawgicAgentRepository;
     private final ClawgicAgentEloRepository clawgicAgentEloRepository;
@@ -111,6 +114,32 @@ public class ClawgicAgentService {
         return clawgicResponseMapper.toAgentSummaryResponses(agents);
     }
 
+    @Transactional(readOnly = true)
+    public ClawgicAgentResponses.AgentLeaderboardPage getLeaderboard(int offset, int limit) {
+        int normalizedOffset = normalizeLeaderboardOffset(offset);
+        int normalizedLimit = normalizeLeaderboardLimit(limit);
+
+        List<ClawgicAgentLeaderboardRow> rows =
+                clawgicAgentRepository.findLeaderboardRows(normalizedLimit, normalizedOffset);
+        long total = clawgicAgentRepository.countLeaderboardAgents();
+        List<ClawgicAgentResponses.AgentLeaderboardEntry> entries = IntStream.range(0, rows.size())
+                .mapToObj(index -> clawgicResponseMapper.toAgentLeaderboardEntry(
+                        rows.get(index),
+                        normalizedOffset + index + 1,
+                        null
+                ))
+                .toList();
+
+        boolean hasMore = normalizedOffset + entries.size() < total;
+        return new ClawgicAgentResponses.AgentLeaderboardPage(
+                entries,
+                normalizedOffset,
+                normalizedLimit,
+                total,
+                hasMore
+        );
+    }
+
     private void upsertUser(String walletAddress) {
         if (clawgicUserRepository.existsById(walletAddress)) {
             return;
@@ -155,5 +184,25 @@ public class ClawgicAgentService {
         } catch (URISyntaxException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "avatarUrl must be a valid URL", ex);
         }
+    }
+
+    private int normalizeLeaderboardOffset(int offset) {
+        if (offset < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "offset must be greater than or equal to 0");
+        }
+        return offset;
+    }
+
+    private int normalizeLeaderboardLimit(int limit) {
+        if (limit <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "limit must be greater than 0");
+        }
+        if (limit > MAX_LEADERBOARD_LIMIT) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "limit must be less than or equal to " + MAX_LEADERBOARD_LIMIT
+            );
+        }
+        return limit;
     }
 }

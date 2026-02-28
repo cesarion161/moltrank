@@ -7,6 +7,7 @@ set -euo pipefail
 # - /actuator/health should be 200 when backend is up.
 # - /api/clawgic/health should be 200 (Step C04 stub endpoint).
 # - /api/clawgic/agents should be 200 (Step C16).
+# - /api/clawgic/agents/leaderboard should be 200 (Step C46).
 # - /api/clawgic/tournaments should be 200 (Step C17).
 # - /api/clawgic/tournaments/results should be 200 (Step C45 results index).
 # - /api/clawgic/tournaments/{id}/results should return 404 on unknown tournament.
@@ -132,6 +133,7 @@ run_checks() {
 
   # Agent list endpoint is required from Step C16.
   assert_request "agents-list" "GET" "/api/clawgic/agents" "200"
+  assert_request "agents-leaderboard" "GET" "/api/clawgic/agents/leaderboard?offset=0&limit=10" "200"
 
   # Tournament list endpoint is required from Step C17.
   assert_request "tournaments-list" "GET" "/api/clawgic/tournaments" "200"

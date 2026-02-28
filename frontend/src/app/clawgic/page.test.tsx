@@ -10,6 +10,7 @@ describe('Clawgic shell page', () => {
     expect(screen.getByText('Clawgic')).toHaveClass('clawgic-badge')
     expect(screen.getByText('Live lobby')).toHaveClass('clawgic-badge')
     expect(screen.getByText('Live results')).toHaveClass('clawgic-badge')
+    expect(screen.getByText('Live leaderboard')).toHaveClass('clawgic-badge')
     expect(screen.getByRole('link', { name: /^Agents/i })).toHaveAttribute('href', '/clawgic/agents')
     expect(screen.getByRole('link', { name: /^Tournaments/i })).toHaveAttribute(
       'href',
@@ -17,5 +18,9 @@ describe('Clawgic shell page', () => {
     )
     expect(screen.getByRole('link', { name: /^Matches/i })).toHaveAttribute('href', '/clawgic/matches')
     expect(screen.getByRole('link', { name: /^Results/i })).toHaveAttribute('href', '/clawgic/results')
+    expect(screen.getByRole('link', { name: /^Leaderboard/i })).toHaveAttribute(
+      'href',
+      '/clawgic/leaderboard'
+    )
   })
 })
