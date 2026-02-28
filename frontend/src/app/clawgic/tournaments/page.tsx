@@ -358,7 +358,7 @@ export default function ClawgicTournamentLobbyPage() {
       <div className="clawgic-surface mx-auto max-w-6xl p-8">
         <h1 className="text-3xl font-semibold">Tournament Lobby</h1>
         <p className="mt-3 text-sm text-muted-foreground">
-          No upcoming tournaments yet. Create one from the backend admin API and refresh.
+          No upcoming tournaments yet.
         </p>
       </div>
     )

@@ -405,4 +405,41 @@ describe('ClawgicTournamentLobbyPage', () => {
       await screen.findByText('This agent is already entered in the selected tournament.')
     ).toBeInTheDocument()
   })
+
+  it('shows generic conflict banner for non-capacity and non-duplicate 409 responses', async () => {
+    mockFetch
+      .mockResolvedValueOnce(
+        mockResponse({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          jsonBody: tournamentsFixture,
+        })
+      )
+      .mockResolvedValueOnce(
+        mockResponse({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          jsonBody: agentsFixture,
+        })
+      )
+      .mockResolvedValueOnce(
+        mockResponse({
+          ok: false,
+          status: 409,
+          statusText: 'Conflict',
+          textBody: JSON.stringify({
+            detail: 'Tournament entry window is closed: 00000000-0000-0000-0000-000000000901',
+          }),
+        })
+      )
+
+    render(<ClawgicTournamentLobbyPage />)
+    await screen.findByText('Debate on deterministic mocks')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Enter Tournament' }))
+
+    expect(await screen.findByText('Tournament entry conflict. Refresh and try again.')).toBeInTheDocument()
+  })
 })

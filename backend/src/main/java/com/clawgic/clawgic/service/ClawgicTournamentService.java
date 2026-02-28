@@ -29,6 +29,8 @@ import com.clawgic.clawgic.repository.ClawgicStakingLedgerRepository;
 import com.clawgic.clawgic.repository.ClawgicTournamentEntryRepository;
 import com.clawgic.clawgic.repository.ClawgicTournamentRepository;
 import com.clawgic.clawgic.web.X402PaymentRequestException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -49,6 +51,7 @@ import java.util.stream.Collectors;
 public class ClawgicTournamentService {
 
     private static final int DEFAULT_ELO = 1000;
+    private static final Logger LOGGER = LoggerFactory.getLogger(ClawgicTournamentService.class);
 
     private final ClawgicAgentRepository clawgicAgentRepository;
     private final ClawgicAgentEloRepository clawgicAgentEloRepository;
@@ -217,6 +220,7 @@ public class ClawgicTournamentService {
             ClawgicTournamentRequests.EnterTournamentRequest request,
             String paymentHeaderValue
     ) {
+        UUID agentId = request.agentId();
 
         ClawgicTournament tournament = clawgicTournamentRepository.findById(tournamentId)
                 .orElseThrow(() -> new ResponseStatusException(
@@ -226,19 +230,20 @@ public class ClawgicTournamentService {
 
         OffsetDateTime now = OffsetDateTime.now();
         if (tournament.getStatus() != ClawgicTournamentStatus.SCHEDULED) {
+            logEntryConflict("tournament_not_open", tournamentId, agentId, tournament, now);
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "Tournament is not open for entries: " + tournamentId
             );
         }
         if (!now.isBefore(tournament.getEntryCloseTime())) {
+            logEntryConflict("entry_window_closed", tournamentId, agentId, tournament, now);
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "Tournament entry window is closed: " + tournamentId
             );
         }
 
-        UUID agentId = request.agentId();
         ClawgicTournamentEntry existingEntry = clawgicTournamentEntryRepository
                 .findByTournamentIdAndAgentId(tournamentId, agentId)
                 .orElse(null);
@@ -246,6 +251,7 @@ public class ClawgicTournamentService {
             if (x402Properties.isEnabled()) {
                 return clawgicResponseMapper.toTournamentEntryResponse(existingEntry);
             }
+            logEntryConflict("already_entered", tournamentId, agentId, tournament, now);
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "Agent is already entered in tournament: " + tournamentId
@@ -255,6 +261,7 @@ public class ClawgicTournamentService {
         List<ClawgicTournamentEntry> currentEntries =
                 clawgicTournamentEntryRepository.findByTournamentIdOrderByCreatedAtAsc(tournamentId);
         if (currentEntries.size() >= tournament.getMaxEntries()) {
+            logEntryConflict("capacity_reached", tournamentId, agentId, tournament, now);
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "Tournament entry capacity reached: " + tournamentId
@@ -480,6 +487,25 @@ public class ClawgicTournamentService {
                     "Tournament entry bypass is disabled (set x402.dev-bypass-enabled=true for local mode)"
             );
         }
+    }
+
+    private void logEntryConflict(
+            String reasonCode,
+            UUID tournamentId,
+            UUID agentId,
+            ClawgicTournament tournament,
+            OffsetDateTime now
+    ) {
+        LOGGER.warn(
+                "entry_conflict reason={} tournamentId={} agentId={} status={} entryCloseTime={} maxEntries={} observedAt={}",
+                reasonCode,
+                tournamentId,
+                agentId,
+                tournament.getStatus(),
+                tournament.getEntryCloseTime(),
+                tournament.getMaxEntries(),
+                now
+        );
     }
 
     private BigDecimal scaleUsdc(BigDecimal value) {
