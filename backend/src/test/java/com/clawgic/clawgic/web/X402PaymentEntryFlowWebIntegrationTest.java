@@ -153,6 +153,38 @@ class X402PaymentEntryFlowWebIntegrationTest {
         assertEquals(ClawgicStakingLedgerStatus.ENTERED, ledgers.getFirst().getStatus());
     }
 
+    @Test
+    void malformedPaymentHeaderReturnsBadRequestInsteadOfTransactionRollbackFailure() throws Exception {
+        OffsetDateTime now = OffsetDateTime.now();
+        createUser(SIGNER_WALLET);
+        UUID agentId = createAgent(SIGNER_WALLET, "web x402 malformed");
+        ClawgicTournament tournament = insertTournament(
+                "C53 malformed header flow",
+                now.plusHours(2),
+                now.plusHours(1)
+        );
+
+        mockMvc.perform(post("/api/clawgic/tournaments/{tournamentId}/enter", tournament.getTournamentId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-PAYMENT", "not-json")
+                        .content("""
+                                {
+                                  "agentId": "%s"
+                                }
+                                """.formatted(agentId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("x402_malformed_payment_header"))
+                .andExpect(jsonPath("$.message").value("X-PAYMENT header must be valid JSON"));
+
+        List<ClawgicPaymentAuthorization> authorizations =
+                clawgicPaymentAuthorizationRepository.findByTournamentIdOrderByCreatedAtAsc(tournament.getTournamentId());
+        assertEquals(0, authorizations.size());
+
+        List<ClawgicTournamentEntry> entries =
+                clawgicTournamentEntryRepository.findByTournamentIdOrderByCreatedAtAsc(tournament.getTournamentId());
+        assertEquals(0, entries.size());
+    }
+
     private static String buildSignedPaymentHeader(
             String requestNonce,
             String idempotencyKey,

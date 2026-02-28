@@ -34,7 +34,7 @@ public class X402PaymentAuthorizationAttemptService {
         this.x402Properties = x402Properties;
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = X402PaymentRequestException.class)
     public ClawgicPaymentAuthorization recordPendingVerificationAttempt(
             UUID tournamentId,
             UUID agentId,

@@ -1,4 +1,4 @@
-.PHONY: dev db-up db-down backend-test backend-verify frontend-test anchor-test smoke-endpoints clawgic-demo
+.PHONY: dev db-up db-down backend-test backend-verify frontend-test anchor-test smoke-endpoints smoke-clawgic clawgic-demo
 
 dev:
 	./scripts/dev-start.sh
@@ -23,6 +23,9 @@ anchor-test:
 
 smoke-endpoints:
 	./scripts/smoke-endpoints.sh
+
+smoke-clawgic:
+	./scripts/smoke-clawgic.sh
 
 clawgic-demo:
 	./scripts/clawgic-demo-runner.sh

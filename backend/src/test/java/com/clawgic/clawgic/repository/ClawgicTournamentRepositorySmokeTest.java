@@ -6,6 +6,7 @@ import com.clawgic.clawgic.model.ClawgicTournamentEntry;
 import com.clawgic.clawgic.model.ClawgicTournamentEntryStatus;
 import com.clawgic.clawgic.model.ClawgicTournamentStatus;
 import com.clawgic.clawgic.model.ClawgicUser;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -48,6 +49,22 @@ class ClawgicTournamentRepositorySmokeTest {
 
     @Autowired
     private ClawgicTournamentEntryRepository clawgicTournamentEntryRepository;
+
+    @BeforeEach
+    void isolateClawgicTournamentTables() {
+        jdbcTemplate.execute("""
+                TRUNCATE TABLE
+                    clawgic_matches,
+                    clawgic_tournament_entries,
+                    clawgic_payment_authorizations,
+                    clawgic_staking_ledger,
+                    clawgic_tournaments,
+                    clawgic_agent_elo,
+                    clawgic_agents,
+                    clawgic_users
+                CASCADE
+                """);
+    }
 
     @Test
     void flywayCreatesTournamentTablesAndRepositoriesSupportUpcomingAndEntryQueries() {

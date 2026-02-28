@@ -14,13 +14,13 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB: moltrank
-          POSTGRES_USER: moltrank
+          POSTGRES_DB: clawgic
+          POSTGRES_USER: clawgic
           POSTGRES_PASSWORD: changeme
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U moltrank -d moltrank"
+          --health-cmd "pg_isready -U clawgic -d clawgic"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -45,6 +45,10 @@ jobs:
 
       - name: Run backend verify (strict)
         working-directory: backend
+        env:
+          C10_TEST_DB_URL: jdbc:postgresql://localhost:5432/clawgic
+          C10_TEST_DB_USERNAME: clawgic
+          C10_TEST_DB_PASSWORD: changeme
         run: ./gradlew clean check --no-daemon --warning-mode=fail
 
       - name: Upload test results

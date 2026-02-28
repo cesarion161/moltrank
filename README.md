@@ -135,10 +135,29 @@ DB_PASSWORD=changeme ./gradlew bootRun
 
 Existing smoke helper:
 - `make smoke-endpoints`
+- `make smoke-clawgic`
 
 Important:
-- `scripts/smoke-endpoints.sh` currently targets legacy MoltRank endpoints.
-- A dedicated Clawgic API smoke script is planned in `MVP_FIX_PLAN.md` (`Step C05`, expanded in `Step C53`).
+- `scripts/smoke-endpoints.sh` targets legacy MoltRank endpoints.
+- `scripts/smoke-clawgic.sh` covers Clawgic APIs (agent CRUD smoke, tournament CRUD/status smoke, entry/bracket smoke).
+
+Run Clawgic smoke against a live backend:
+
+```bash
+make smoke-clawgic
+```
+
+x402 behavior validation modes:
+- `X402_EXPECTED_MODE=auto` (default): detect mode from live entry response (`201` => bypass, `402` => challenge)
+- `X402_EXPECTED_MODE=bypass`: require bypass behavior (`x402.enabled=false`)
+- `X402_EXPECTED_MODE=challenge`: require challenge behavior (`x402.enabled=true`)
+
+Examples:
+
+```bash
+X402_EXPECTED_MODE=bypass make smoke-clawgic
+X402_EXPECTED_MODE=challenge BASE_URL=http://localhost:18080 make smoke-clawgic
+```
 
 ## Implementation Notes
 
@@ -162,5 +181,6 @@ These are preserved but not part of the active Clawgic MVP path:
 - `make backend-verify` - backend check (`test` + PMD)
 - `make frontend-test` - frontend tests
 - `make smoke-endpoints` - legacy MoltRank endpoint smoke test
+- `make smoke-clawgic` - Clawgic endpoint smoke test (agent/tournament/entry/bracket)
 - `make anchor-test` - legacy Anchor test flow
 - `make clawgic-demo` - one-command Clawgic deterministic demo runner (Step C52)
