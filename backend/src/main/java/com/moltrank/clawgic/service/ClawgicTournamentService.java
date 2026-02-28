@@ -172,7 +172,13 @@ public class ClawgicTournamentService {
         }
 
         UUID agentId = request.agentId();
-        if (clawgicTournamentEntryRepository.existsByTournamentIdAndAgentId(tournamentId, agentId)) {
+        ClawgicTournamentEntry existingEntry = clawgicTournamentEntryRepository
+                .findByTournamentIdAndAgentId(tournamentId, agentId)
+                .orElse(null);
+        if (existingEntry != null) {
+            if (x402Properties.isEnabled()) {
+                return clawgicResponseMapper.toTournamentEntryResponse(existingEntry);
+            }
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "Agent is already entered in tournament: " + tournamentId
@@ -207,26 +213,32 @@ public class ClawgicTournamentService {
                             tournament.getBaseEntryFeeUsdc(),
                             paymentHeaderValue
                     );
-            x402PaymentAuthorizationAttemptService.verifyAndPersistAuthorizationOutcome(
-                    authorization.getPaymentAuthorizationId(),
-                    agent.getWalletAddress(),
-                    tournament.getBaseEntryFeeUsdc()
+            ClawgicPaymentAuthorization verifiedAuthorization =
+                    x402PaymentAuthorizationAttemptService.verifyAndPersistAuthorizationOutcome(
+                            authorization.getPaymentAuthorizationId(),
+                            agent.getWalletAddress(),
+                            tournament.getBaseEntryFeeUsdc()
+                    );
+
+            return createConfirmedEntryWithAuthorization(
+                    tournament,
+                    agent,
+                    seedSnapshotElo,
+                    now,
+                    verifiedAuthorization,
+                    "X402_AUTHORIZED"
             );
-            throw X402PaymentRequestException.verificationPending();
         }
 
         requireDevBypassModeEnabled();
 
-        ClawgicTournamentEntry entry = new ClawgicTournamentEntry();
-        entry.setEntryId(UUID.randomUUID());
-        entry.setTournamentId(tournamentId);
-        entry.setAgentId(agentId);
-        entry.setWalletAddress(agent.getWalletAddress());
-        entry.setStatus(ClawgicTournamentEntryStatus.CONFIRMED);
-        entry.setSeedSnapshotElo(seedSnapshotElo);
-        entry.setCreatedAt(now);
-        entry.setUpdatedAt(now);
-        ClawgicTournamentEntry savedEntry = clawgicTournamentEntryRepository.save(entry);
+        ClawgicTournamentEntry savedEntry = createTournamentEntry(
+                tournament.getTournamentId(),
+                agentId,
+                agent.getWalletAddress(),
+                seedSnapshotElo,
+                now
+        );
 
         ClawgicPaymentAuthorization paymentAuthorization = new ClawgicPaymentAuthorization();
         paymentAuthorization.setPaymentAuthorizationId(UUID.randomUUID());
@@ -247,24 +259,13 @@ public class ClawgicTournamentService {
         ClawgicPaymentAuthorization savedAuthorization =
                 clawgicPaymentAuthorizationRepository.save(paymentAuthorization);
 
-        ClawgicStakingLedger stakingLedger = new ClawgicStakingLedger();
-        stakingLedger.setStakeId(UUID.randomUUID());
-        stakingLedger.setTournamentId(tournamentId);
-        stakingLedger.setEntryId(savedEntry.getEntryId());
-        stakingLedger.setPaymentAuthorizationId(savedAuthorization.getPaymentAuthorizationId());
-        stakingLedger.setAgentId(agentId);
-        stakingLedger.setWalletAddress(agent.getWalletAddress());
-        stakingLedger.setAmountStaked(scaleUsdc(tournament.getBaseEntryFeeUsdc()));
-        stakingLedger.setJudgeFeeDeducted(scaleUsdc(BigDecimal.ZERO));
-        stakingLedger.setSystemRetention(scaleUsdc(BigDecimal.ZERO));
-        stakingLedger.setRewardPayout(scaleUsdc(BigDecimal.ZERO));
-        stakingLedger.setStatus(ClawgicStakingLedgerStatus.ENTERED);
-        stakingLedger.setSettlementNote("BYPASS_ACCEPTED (x402.enabled=false)");
-        stakingLedger.setAuthorizedAt(now);
-        stakingLedger.setEnteredAt(now);
-        stakingLedger.setCreatedAt(now);
-        stakingLedger.setUpdatedAt(now);
-        clawgicStakingLedgerRepository.save(stakingLedger);
+        createOrUpdateStakingLedger(
+                savedEntry,
+                savedAuthorization,
+                now,
+                scaleUsdc(tournament.getBaseEntryFeeUsdc()),
+                "BYPASS_ACCEPTED (x402.enabled=false)"
+        );
 
         return clawgicResponseMapper.toTournamentEntryResponse(savedEntry);
     }
@@ -416,5 +417,99 @@ public class ClawgicTournamentService {
 
     private BigDecimal scaleUsdc(BigDecimal value) {
         return value.setScale(6, RoundingMode.HALF_UP);
+    }
+
+    private ClawgicTournamentResponses.TournamentEntry createConfirmedEntryWithAuthorization(
+            ClawgicTournament tournament,
+            ClawgicAgent agent,
+            int seedSnapshotElo,
+            OffsetDateTime now,
+            ClawgicPaymentAuthorization verifiedAuthorization,
+            String settlementNote
+    ) {
+        if (verifiedAuthorization.getStatus() != ClawgicPaymentAuthorizationStatus.AUTHORIZED) {
+            throw X402PaymentRequestException.verificationPending();
+        }
+
+        ClawgicTournamentEntry savedEntry = createTournamentEntry(
+                tournament.getTournamentId(),
+                agent.getAgentId(),
+                agent.getWalletAddress(),
+                seedSnapshotElo,
+                now
+        );
+
+        verifiedAuthorization.setEntryId(savedEntry.getEntryId());
+        verifiedAuthorization.setUpdatedAt(now);
+        ClawgicPaymentAuthorization linkedAuthorization =
+                clawgicPaymentAuthorizationRepository.saveAndFlush(verifiedAuthorization);
+
+        createOrUpdateStakingLedger(
+                savedEntry,
+                linkedAuthorization,
+                now,
+                linkedAuthorization.getAmountAuthorizedUsdc(),
+                settlementNote
+        );
+
+        return clawgicResponseMapper.toTournamentEntryResponse(savedEntry);
+    }
+
+    private ClawgicTournamentEntry createTournamentEntry(
+            UUID tournamentId,
+            UUID agentId,
+            String walletAddress,
+            int seedSnapshotElo,
+            OffsetDateTime now
+    ) {
+        ClawgicTournamentEntry entry = new ClawgicTournamentEntry();
+        entry.setEntryId(UUID.randomUUID());
+        entry.setTournamentId(tournamentId);
+        entry.setAgentId(agentId);
+        entry.setWalletAddress(walletAddress);
+        entry.setStatus(ClawgicTournamentEntryStatus.CONFIRMED);
+        entry.setSeedSnapshotElo(seedSnapshotElo);
+        entry.setCreatedAt(now);
+        entry.setUpdatedAt(now);
+        return clawgicTournamentEntryRepository.save(entry);
+    }
+
+    private void createOrUpdateStakingLedger(
+            ClawgicTournamentEntry entry,
+            ClawgicPaymentAuthorization authorization,
+            OffsetDateTime now,
+            BigDecimal amountStaked,
+            String settlementNote
+    ) {
+        ClawgicStakingLedger stakingLedger = clawgicStakingLedgerRepository
+                .findByPaymentAuthorizationId(authorization.getPaymentAuthorizationId())
+                .orElseGet(ClawgicStakingLedger::new);
+
+        if (stakingLedger.getStakeId() == null) {
+            stakingLedger.setStakeId(UUID.randomUUID());
+            stakingLedger.setCreatedAt(now);
+        }
+
+        stakingLedger.setTournamentId(entry.getTournamentId());
+        stakingLedger.setEntryId(entry.getEntryId());
+        stakingLedger.setPaymentAuthorizationId(authorization.getPaymentAuthorizationId());
+        stakingLedger.setAgentId(entry.getAgentId());
+        stakingLedger.setWalletAddress(entry.getWalletAddress());
+        stakingLedger.setAmountStaked(scaleUsdc(amountStaked));
+        stakingLedger.setJudgeFeeDeducted(scaleUsdc(BigDecimal.ZERO));
+        stakingLedger.setSystemRetention(scaleUsdc(BigDecimal.ZERO));
+        stakingLedger.setRewardPayout(scaleUsdc(BigDecimal.ZERO));
+        stakingLedger.setStatus(ClawgicStakingLedgerStatus.ENTERED);
+        stakingLedger.setSettlementNote(settlementNote);
+        if (stakingLedger.getAuthorizedAt() == null) {
+            stakingLedger.setAuthorizedAt(
+                    authorization.getVerifiedAt() != null ? authorization.getVerifiedAt() : now
+            );
+        }
+        if (stakingLedger.getEnteredAt() == null) {
+            stakingLedger.setEnteredAt(now);
+        }
+        stakingLedger.setUpdatedAt(now);
+        clawgicStakingLedgerRepository.save(stakingLedger);
     }
 }

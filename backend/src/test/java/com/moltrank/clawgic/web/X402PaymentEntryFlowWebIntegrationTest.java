@@ -8,11 +8,16 @@ import com.moltrank.clawgic.model.ClawgicAgent;
 import com.moltrank.clawgic.model.ClawgicPaymentAuthorization;
 import com.moltrank.clawgic.model.ClawgicPaymentAuthorizationStatus;
 import com.moltrank.clawgic.model.ClawgicProviderType;
+import com.moltrank.clawgic.model.ClawgicStakingLedger;
+import com.moltrank.clawgic.model.ClawgicStakingLedgerStatus;
 import com.moltrank.clawgic.model.ClawgicTournament;
+import com.moltrank.clawgic.model.ClawgicTournamentEntry;
 import com.moltrank.clawgic.model.ClawgicTournamentStatus;
 import com.moltrank.clawgic.model.ClawgicUser;
 import com.moltrank.clawgic.repository.ClawgicAgentRepository;
 import com.moltrank.clawgic.repository.ClawgicPaymentAuthorizationRepository;
+import com.moltrank.clawgic.repository.ClawgicStakingLedgerRepository;
+import com.moltrank.clawgic.repository.ClawgicTournamentEntryRepository;
 import com.moltrank.clawgic.repository.ClawgicTournamentRepository;
 import com.moltrank.clawgic.repository.ClawgicUserRepository;
 import org.junit.jupiter.api.Test;
@@ -88,10 +93,16 @@ class X402PaymentEntryFlowWebIntegrationTest {
     private ClawgicPaymentAuthorizationRepository clawgicPaymentAuthorizationRepository;
 
     @Autowired
+    private ClawgicTournamentEntryRepository clawgicTournamentEntryRepository;
+
+    @Autowired
+    private ClawgicStakingLedgerRepository clawgicStakingLedgerRepository;
+
+    @Autowired
     private X402Properties x402Properties;
 
     @Test
-    void interceptorRouteWithValidSignedHeaderPersistsAuthorizedRecord() throws Exception {
+    void interceptorRouteWithValidSignedHeaderCreatesEntryAndPersistsAuthorizedRecord() throws Exception {
         OffsetDateTime now = OffsetDateTime.now();
         createUser(SIGNER_WALLET);
         UUID agentId = createAgent(SIGNER_WALLET, "web x402 accepted");
@@ -122,8 +133,8 @@ class X402PaymentEntryFlowWebIntegrationTest {
                                   "agentId": "%s"
                                 }
                                 """.formatted(agentId)))
-                .andExpect(status().isPaymentRequired())
-                .andExpect(jsonPath("$.code").value("x402_verification_pending"));
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.agentId").value(agentId.toString()));
 
         List<ClawgicPaymentAuthorization> authorizations =
                 clawgicPaymentAuthorizationRepository.findByTournamentIdOrderByCreatedAtAsc(tournament.getTournamentId());
@@ -131,6 +142,17 @@ class X402PaymentEntryFlowWebIntegrationTest {
         ClawgicPaymentAuthorization authorization = authorizations.getFirst();
         assertEquals(ClawgicPaymentAuthorizationStatus.AUTHORIZED, authorization.getStatus());
         assertNotNull(authorization.getVerifiedAt());
+
+        List<ClawgicTournamentEntry> entries =
+                clawgicTournamentEntryRepository.findByTournamentIdOrderByCreatedAtAsc(tournament.getTournamentId());
+        assertEquals(1, entries.size());
+        assertEquals(agentId, entries.getFirst().getAgentId());
+        assertEquals(entries.getFirst().getEntryId(), authorization.getEntryId());
+
+        List<ClawgicStakingLedger> ledgers =
+                clawgicStakingLedgerRepository.findByTournamentIdOrderByCreatedAtAsc(tournament.getTournamentId());
+        assertEquals(1, ledgers.size());
+        assertEquals(ClawgicStakingLedgerStatus.ENTERED, ledgers.getFirst().getStatus());
     }
 
     private static String buildSignedPaymentHeader(

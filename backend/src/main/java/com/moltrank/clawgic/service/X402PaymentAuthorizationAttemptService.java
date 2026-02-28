@@ -45,20 +45,19 @@ public class X402PaymentAuthorizationAttemptService {
         X402PaymentHeaderParser.ParsedX402PaymentHeader parsedHeader =
                 x402PaymentHeaderParser.parse(paymentHeaderValue);
 
+        ClawgicPaymentAuthorization existingByIdempotency = clawgicPaymentAuthorizationRepository
+                .findByWalletAddressAndIdempotencyKey(walletAddress, parsedHeader.idempotencyKey())
+                .orElse(null);
+        if (existingByIdempotency != null) {
+            return resolveIdempotentRetry(existingByIdempotency, tournamentId, agentId, parsedHeader);
+        }
+
         if (clawgicPaymentAuthorizationRepository.existsByWalletAddressAndRequestNonce(
                 walletAddress,
                 parsedHeader.requestNonce()
         )) {
             throw X402PaymentRequestException.replayRejected(
                     "Duplicate request nonce for wallet: " + parsedHeader.requestNonce()
-            );
-        }
-        if (clawgicPaymentAuthorizationRepository.existsByWalletAddressAndIdempotencyKey(
-                walletAddress,
-                parsedHeader.idempotencyKey()
-        )) {
-            throw X402PaymentRequestException.replayRejected(
-                    "Duplicate idempotency key for wallet: " + parsedHeader.idempotencyKey()
             );
         }
 
@@ -106,6 +105,25 @@ public class X402PaymentAuthorizationAttemptService {
                         "Payment authorization not found: " + paymentAuthorizationId
                 ));
 
+        if (authorization.getStatus() == ClawgicPaymentAuthorizationStatus.AUTHORIZED
+                || authorization.getStatus() == ClawgicPaymentAuthorizationStatus.BYPASSED) {
+            return authorization;
+        }
+
+        if (authorization.getStatus() == ClawgicPaymentAuthorizationStatus.REJECTED) {
+            throw X402PaymentRequestException.verificationFailed(
+                    authorization.getFailureReason() != null
+                            ? authorization.getFailureReason()
+                            : "Payment authorization was previously rejected"
+            );
+        }
+
+        if (authorization.getStatus() != ClawgicPaymentAuthorizationStatus.PENDING_VERIFICATION) {
+            throw X402PaymentRequestException.verificationFailed(
+                    "Payment authorization is not pending verification"
+            );
+        }
+
         OffsetDateTime now = OffsetDateTime.now();
         try {
             X402Eip3009SignatureVerifier.VerifiedTransferWithAuthorization verifiedAuthorization =
@@ -135,5 +153,27 @@ public class X402PaymentAuthorizationAttemptService {
 
     private BigDecimal scaleUsdc(BigDecimal value) {
         return value.setScale(6, RoundingMode.HALF_UP);
+    }
+
+    private ClawgicPaymentAuthorization resolveIdempotentRetry(
+            ClawgicPaymentAuthorization existingAuthorization,
+            UUID tournamentId,
+            UUID agentId,
+            X402PaymentHeaderParser.ParsedX402PaymentHeader parsedHeader
+    ) {
+        if (!existingAuthorization.getTournamentId().equals(tournamentId)
+                || !existingAuthorization.getAgentId().equals(agentId)) {
+            throw X402PaymentRequestException.replayRejected(
+                    "Duplicate idempotency key cannot be reused for a different tournament entry"
+            );
+        }
+
+        if (!existingAuthorization.getRequestNonce().equals(parsedHeader.requestNonce())) {
+            throw X402PaymentRequestException.replayRejected(
+                    "Duplicate idempotency key for wallet: " + parsedHeader.idempotencyKey()
+            );
+        }
+
+        return existingAuthorization;
     }
 }

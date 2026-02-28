@@ -4,16 +4,21 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.moltrank.clawgic.config.X402Properties;
+import com.moltrank.clawgic.dto.ClawgicTournamentResponses;
 import com.moltrank.clawgic.dto.ClawgicTournamentRequests;
 import com.moltrank.clawgic.model.ClawgicAgent;
 import com.moltrank.clawgic.model.ClawgicPaymentAuthorization;
 import com.moltrank.clawgic.model.ClawgicPaymentAuthorizationStatus;
 import com.moltrank.clawgic.model.ClawgicProviderType;
+import com.moltrank.clawgic.model.ClawgicStakingLedger;
+import com.moltrank.clawgic.model.ClawgicStakingLedgerStatus;
 import com.moltrank.clawgic.model.ClawgicTournament;
+import com.moltrank.clawgic.model.ClawgicTournamentEntryStatus;
 import com.moltrank.clawgic.model.ClawgicTournamentStatus;
 import com.moltrank.clawgic.model.ClawgicUser;
 import com.moltrank.clawgic.repository.ClawgicAgentRepository;
 import com.moltrank.clawgic.repository.ClawgicPaymentAuthorizationRepository;
+import com.moltrank.clawgic.repository.ClawgicStakingLedgerRepository;
 import com.moltrank.clawgic.repository.ClawgicTournamentEntryRepository;
 import com.moltrank.clawgic.repository.ClawgicTournamentRepository;
 import com.moltrank.clawgic.repository.ClawgicUserRepository;
@@ -92,8 +97,11 @@ class ClawgicTournamentX402AuthorizationIntegrationTest {
     @Autowired
     private X402Properties x402Properties;
 
+    @Autowired
+    private ClawgicStakingLedgerRepository clawgicStakingLedgerRepository;
+
     @Test
-    void enterTournamentWithValidX402HeaderPersistsAuthorizedAuthorizationRecord() throws Exception {
+    void enterTournamentWithValidX402HeaderCreatesEntryAndLedgerWithAuthorizedPayment() throws Exception {
         OffsetDateTime now = OffsetDateTime.now();
         createUser(SIGNER_WALLET);
         UUID agentId = createAgent(SIGNER_WALLET, "x402 accepted");
@@ -116,29 +124,99 @@ class ClawgicTournamentX402AuthorizationIntegrationTest {
                 Instant.now().getEpochSecond() + 600
         );
 
-        X402PaymentRequestException ex = assertThrows(X402PaymentRequestException.class, () ->
+        ClawgicTournamentResponses.TournamentEntry createdEntry =
                 clawgicTournamentService.enterTournament(
                         tournament.getTournamentId(),
                         new ClawgicTournamentRequests.EnterTournamentRequest(agentId),
                         paymentHeader
-                )
-        );
-
-        assertEquals(HttpStatus.PAYMENT_REQUIRED, ex.getStatus());
-        assertEquals("x402_verification_pending", ex.getCode());
+                );
+        assertEquals(tournament.getTournamentId(), createdEntry.tournamentId());
+        assertEquals(agentId, createdEntry.agentId());
+        assertEquals(ClawgicTournamentEntryStatus.CONFIRMED, createdEntry.status());
 
         List<ClawgicPaymentAuthorization> authorizations =
                 clawgicPaymentAuthorizationRepository.findByTournamentIdOrderByCreatedAtAsc(tournament.getTournamentId());
         assertEquals(1, authorizations.size());
         ClawgicPaymentAuthorization authorization = authorizations.getFirst();
         assertEquals(ClawgicPaymentAuthorizationStatus.AUTHORIZED, authorization.getStatus());
+        assertEquals(createdEntry.entryId(), authorization.getEntryId());
         assertEquals("req-c33-accepted-01-" + RUN_ID, authorization.getRequestNonce());
         assertEquals("idem-c33-accepted-01-" + RUN_ID, authorization.getIdempotencyKey());
         assertEquals(new BigDecimal("5.000000"), authorization.getAmountAuthorizedUsdc());
         assertEquals(x402Properties.getChainId(), authorization.getChainId());
         assertEquals(x402Properties.getSettlementAddress(), authorization.getRecipientWalletAddress());
         assertNotNull(authorization.getVerifiedAt());
-        assertEquals(0, clawgicTournamentEntryRepository.findByTournamentIdOrderByCreatedAtAsc(tournament.getTournamentId()).size());
+
+        assertEquals(1, clawgicTournamentEntryRepository
+                .findByTournamentIdOrderByCreatedAtAsc(tournament.getTournamentId()).size());
+
+        List<ClawgicStakingLedger> ledgers =
+                clawgicStakingLedgerRepository.findByTournamentIdOrderByCreatedAtAsc(tournament.getTournamentId());
+        assertEquals(1, ledgers.size());
+        ClawgicStakingLedger ledger = ledgers.getFirst();
+        assertEquals(ClawgicStakingLedgerStatus.ENTERED, ledger.getStatus());
+        assertEquals(createdEntry.entryId(), ledger.getEntryId());
+        assertEquals(authorization.getPaymentAuthorizationId(), ledger.getPaymentAuthorizationId());
+        assertEquals(new BigDecimal("5.000000"), ledger.getAmountStaked());
+        assertNotNull(ledger.getEnteredAt());
+    }
+
+    @Test
+    void enterTournamentDuplicateRetryReturnsExistingEntryWithoutExtraAuthorizationRows() throws Exception {
+        OffsetDateTime now = OffsetDateTime.now();
+        createUser(SIGNER_WALLET);
+        UUID agentId = createAgent(SIGNER_WALLET, "x402 idempotent retry");
+        ClawgicTournament tournament = insertTournament(
+                "C34 duplicate retry",
+                now.plusHours(2),
+                now.plusHours(1)
+        );
+
+        String initialHeader = buildSignedPaymentHeader(
+                "req-c34-idempotent-01-" + RUN_ID,
+                "idem-c34-idempotent-01-" + RUN_ID,
+                randomAuthorizationNonceHex(),
+                SIGNER_WALLET,
+                x402Properties.getSettlementAddress(),
+                x402Properties.getTokenAddress(),
+                x402Properties.getChainId(),
+                new BigInteger("5000000"),
+                Instant.now().getEpochSecond() - 60,
+                Instant.now().getEpochSecond() + 600
+        );
+        ClawgicTournamentResponses.TournamentEntry firstEntry =
+                clawgicTournamentService.enterTournament(
+                        tournament.getTournamentId(),
+                        new ClawgicTournamentRequests.EnterTournamentRequest(agentId),
+                        initialHeader
+                );
+
+        String retryHeader = buildSignedPaymentHeader(
+                "req-c34-idempotent-02-" + RUN_ID,
+                "idem-c34-idempotent-02-" + RUN_ID,
+                randomAuthorizationNonceHex(),
+                SIGNER_WALLET,
+                x402Properties.getSettlementAddress(),
+                x402Properties.getTokenAddress(),
+                x402Properties.getChainId(),
+                new BigInteger("5000000"),
+                Instant.now().getEpochSecond() - 60,
+                Instant.now().getEpochSecond() + 600
+        );
+        ClawgicTournamentResponses.TournamentEntry retriedEntry =
+                clawgicTournamentService.enterTournament(
+                        tournament.getTournamentId(),
+                        new ClawgicTournamentRequests.EnterTournamentRequest(agentId),
+                        retryHeader
+                );
+
+        assertEquals(firstEntry.entryId(), retriedEntry.entryId());
+        assertEquals(1, clawgicPaymentAuthorizationRepository
+                .findByTournamentIdOrderByCreatedAtAsc(tournament.getTournamentId())
+                .size());
+        assertEquals(1, clawgicStakingLedgerRepository
+                .findByTournamentIdOrderByCreatedAtAsc(tournament.getTournamentId())
+                .size());
     }
 
     @Test
@@ -216,7 +294,8 @@ class ClawgicTournamentX402AuthorizationIntegrationTest {
     void enterTournamentRejectsDuplicateRequestNonceReplay() throws Exception {
         OffsetDateTime now = OffsetDateTime.now();
         createUser(SIGNER_WALLET);
-        UUID agentId = createAgent(SIGNER_WALLET, "x402 duplicate nonce");
+        UUID firstAgentId = createAgent(SIGNER_WALLET, "x402 duplicate nonce first");
+        UUID secondAgentId = createAgent(SIGNER_WALLET, "x402 duplicate nonce second");
         ClawgicTournament tournament = insertTournament(
                 "C32 duplicate nonce replay",
                 now.plusHours(2),
@@ -236,12 +315,10 @@ class ClawgicTournamentX402AuthorizationIntegrationTest {
                 Instant.now().getEpochSecond() + 600
         );
 
-        assertThrows(X402PaymentRequestException.class, () ->
-                clawgicTournamentService.enterTournament(
-                        tournament.getTournamentId(),
-                        new ClawgicTournamentRequests.EnterTournamentRequest(agentId),
-                        firstHeader
-                )
+        clawgicTournamentService.enterTournament(
+                tournament.getTournamentId(),
+                new ClawgicTournamentRequests.EnterTournamentRequest(firstAgentId),
+                firstHeader
         );
 
         String replayHeader = buildSignedPaymentHeader(
@@ -260,7 +337,7 @@ class ClawgicTournamentX402AuthorizationIntegrationTest {
         X402PaymentRequestException replay = assertThrows(X402PaymentRequestException.class, () ->
                 clawgicTournamentService.enterTournament(
                         tournament.getTournamentId(),
-                        new ClawgicTournamentRequests.EnterTournamentRequest(agentId),
+                        new ClawgicTournamentRequests.EnterTournamentRequest(secondAgentId),
                         replayHeader
                 )
         );
@@ -276,7 +353,8 @@ class ClawgicTournamentX402AuthorizationIntegrationTest {
     void enterTournamentRejectsDuplicateIdempotencyKeyReplay() throws Exception {
         OffsetDateTime now = OffsetDateTime.now();
         createUser(SIGNER_WALLET);
-        UUID agentId = createAgent(SIGNER_WALLET, "x402 duplicate idempotency");
+        UUID firstAgentId = createAgent(SIGNER_WALLET, "x402 duplicate idempotency first");
+        UUID secondAgentId = createAgent(SIGNER_WALLET, "x402 duplicate idempotency second");
         ClawgicTournament tournament = insertTournament(
                 "C32 duplicate idempotency replay",
                 now.plusHours(2),
@@ -296,12 +374,10 @@ class ClawgicTournamentX402AuthorizationIntegrationTest {
                 Instant.now().getEpochSecond() + 600
         );
 
-        assertThrows(X402PaymentRequestException.class, () ->
-                clawgicTournamentService.enterTournament(
-                        tournament.getTournamentId(),
-                        new ClawgicTournamentRequests.EnterTournamentRequest(agentId),
-                        firstHeader
-                )
+        clawgicTournamentService.enterTournament(
+                tournament.getTournamentId(),
+                new ClawgicTournamentRequests.EnterTournamentRequest(firstAgentId),
+                firstHeader
         );
 
         String replayHeader = buildSignedPaymentHeader(
@@ -320,7 +396,7 @@ class ClawgicTournamentX402AuthorizationIntegrationTest {
         X402PaymentRequestException replay = assertThrows(X402PaymentRequestException.class, () ->
                 clawgicTournamentService.enterTournament(
                         tournament.getTournamentId(),
-                        new ClawgicTournamentRequests.EnterTournamentRequest(agentId),
+                        new ClawgicTournamentRequests.EnterTournamentRequest(secondAgentId),
                         replayHeader
                 )
         );
