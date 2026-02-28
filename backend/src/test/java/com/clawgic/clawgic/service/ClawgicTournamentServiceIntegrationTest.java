@@ -1,11 +1,16 @@
 package com.clawgic.clawgic.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.clawgic.clawgic.config.ClawgicRuntimeProperties;
+import com.clawgic.clawgic.dto.ClawgicMatchResponses;
 import com.clawgic.clawgic.dto.ClawgicTournamentRequests;
 import com.clawgic.clawgic.dto.ClawgicTournamentResponses;
 import com.clawgic.clawgic.model.ClawgicAgent;
 import com.clawgic.clawgic.model.ClawgicAgentElo;
 import com.clawgic.clawgic.model.ClawgicMatch;
+import com.clawgic.clawgic.model.ClawgicMatchJudgement;
+import com.clawgic.clawgic.model.ClawgicMatchJudgementStatus;
 import com.clawgic.clawgic.model.ClawgicMatchStatus;
 import com.clawgic.clawgic.model.ClawgicPaymentAuthorization;
 import com.clawgic.clawgic.model.ClawgicPaymentAuthorizationStatus;
@@ -17,8 +22,13 @@ import com.clawgic.clawgic.model.ClawgicTournamentEntry;
 import com.clawgic.clawgic.model.ClawgicTournamentEntryStatus;
 import com.clawgic.clawgic.model.ClawgicTournamentStatus;
 import com.clawgic.clawgic.model.ClawgicUser;
+import com.clawgic.clawgic.model.DebatePhase;
+import com.clawgic.clawgic.model.DebateTranscriptJsonCodec;
+import com.clawgic.clawgic.model.DebateTranscriptMessage;
+import com.clawgic.clawgic.model.DebateTranscriptRole;
 import com.clawgic.clawgic.repository.ClawgicAgentEloRepository;
 import com.clawgic.clawgic.repository.ClawgicAgentRepository;
+import com.clawgic.clawgic.repository.ClawgicMatchJudgementRepository;
 import com.clawgic.clawgic.repository.ClawgicMatchRepository;
 import com.clawgic.clawgic.repository.ClawgicPaymentAuthorizationRepository;
 import com.clawgic.clawgic.repository.ClawgicStakingLedgerRepository;
@@ -41,6 +51,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
         "spring.datasource.url=${C10_TEST_DB_URL:jdbc:postgresql://localhost:5432/clawgic}",
@@ -77,6 +88,9 @@ class ClawgicTournamentServiceIntegrationTest {
 
     @Autowired
     private ClawgicMatchRepository clawgicMatchRepository;
+
+    @Autowired
+    private ClawgicMatchJudgementRepository clawgicMatchJudgementRepository;
 
     @Autowired
     private ClawgicPaymentAuthorizationRepository clawgicPaymentAuthorizationRepository;
@@ -402,6 +416,116 @@ class ClawgicTournamentServiceIntegrationTest {
         );
     }
 
+    @Test
+    void getTournamentResultsReturnsTranscriptJudgeRowsAndEloSnapshots() {
+        OffsetDateTime now = OffsetDateTime.now();
+        UUID agentOne = createUserAndAgentWithElo("0x1111111111111111111111111111111111111301", "results one", 1016);
+        UUID agentTwo = createUserAndAgentWithElo("0x1111111111111111111111111111111111111302", "results two", 984);
+        ClawgicTournament tournament = insertTournament(
+                "C45 results payload",
+                ClawgicTournamentStatus.COMPLETED,
+                now.minusHours(1),
+                now.minusHours(2),
+                4
+        );
+        tournament.setWinnerAgentId(agentOne);
+        tournament.setStartedAt(now.minusMinutes(45));
+        tournament.setCompletedAt(now.minusMinutes(10));
+        tournament.setMatchesCompleted(3);
+        tournament.setMatchesForfeited(0);
+        tournament.setUpdatedAt(now.minusMinutes(10));
+        clawgicTournamentRepository.saveAndFlush(tournament);
+
+        createTournamentEntry(tournament.getTournamentId(), agentOne, 1, 1030, now.minusHours(2));
+        createTournamentEntry(tournament.getTournamentId(), agentTwo, 2, 1025, now.minusHours(2).plusMinutes(1));
+
+        UUID matchId = UUID.randomUUID();
+        ClawgicMatch match = new ClawgicMatch();
+        match.setMatchId(matchId);
+        match.setTournamentId(tournament.getTournamentId());
+        match.setAgent1Id(agentOne);
+        match.setAgent2Id(agentTwo);
+        match.setBracketRound(2);
+        match.setBracketPosition(1);
+        match.setStatus(ClawgicMatchStatus.COMPLETED);
+        match.setPhase(DebatePhase.CONCLUSION);
+        match.setTranscriptJson(DebateTranscriptJsonCodec.toJson(List.of(
+                new DebateTranscriptMessage(
+                        DebateTranscriptRole.AGENT_1,
+                        DebatePhase.ARGUMENTATION,
+                        "Agent one argues from measurable benchmarks."
+                ),
+                new DebateTranscriptMessage(
+                        DebateTranscriptRole.AGENT_2,
+                        DebatePhase.COUNTER_ARGUMENTATION,
+                        "Agent two challenges benchmark selection bias."
+                )
+        )));
+        match.setJudgeResultJson(JsonNodeFactory.instance.objectNode().put("winner_id", agentOne.toString()));
+        match.setWinnerAgentId(agentOne);
+        match.setAgent1EloBefore(1000);
+        match.setAgent1EloAfter(1016);
+        match.setAgent2EloBefore(1000);
+        match.setAgent2EloAfter(984);
+        match.setJudgeRetryCount(0);
+        match.setStartedAt(now.minusMinutes(30));
+        match.setJudgeRequestedAt(now.minusMinutes(20));
+        match.setJudgedAt(now.minusMinutes(12));
+        match.setCompletedAt(now.minusMinutes(10));
+        match.setCreatedAt(now.minusMinutes(40));
+        match.setUpdatedAt(now.minusMinutes(10));
+        clawgicMatchRepository.saveAndFlush(match);
+
+        ClawgicMatchJudgement judgement = new ClawgicMatchJudgement();
+        judgement.setJudgementId(UUID.randomUUID());
+        judgement.setMatchId(matchId);
+        judgement.setTournamentId(tournament.getTournamentId());
+        judgement.setJudgeKey("mock-judge-primary");
+        judgement.setJudgeModel("mock-gpt4o");
+        judgement.setStatus(ClawgicMatchJudgementStatus.ACCEPTED);
+        judgement.setAttempt(1);
+        judgement.setResultJson(JsonNodeFactory.instance.objectNode().put("winner_id", agentOne.toString()));
+        judgement.setWinnerAgentId(agentOne);
+        judgement.setAgent1LogicScore(9);
+        judgement.setAgent1PersonaAdherenceScore(8);
+        judgement.setAgent1RebuttalStrengthScore(9);
+        judgement.setAgent2LogicScore(8);
+        judgement.setAgent2PersonaAdherenceScore(7);
+        judgement.setAgent2RebuttalStrengthScore(8);
+        judgement.setReasoning("Agent one maintained stronger logical continuity.");
+        judgement.setJudgedAt(now.minusMinutes(12));
+        judgement.setCreatedAt(now.minusMinutes(12));
+        judgement.setUpdatedAt(now.minusMinutes(12));
+        clawgicMatchJudgementRepository.saveAndFlush(judgement);
+
+        ClawgicTournamentResponses.TournamentResults results =
+                clawgicTournamentService.getTournamentResults(tournament.getTournamentId());
+
+        assertEquals(tournament.getTournamentId(), results.tournament().tournamentId());
+        assertEquals(ClawgicTournamentStatus.COMPLETED, results.tournament().status());
+        assertEquals(2, results.entries().size());
+        assertEquals(agentOne, results.entries().getFirst().agentId());
+        assertEquals(1, results.entries().getFirst().seedPosition());
+
+        assertEquals(1, results.matches().size());
+        ClawgicMatchResponses.MatchDetail matchDetail = results.matches().getFirst();
+        assertEquals(matchId, matchDetail.matchId());
+        assertEquals(ClawgicMatchStatus.COMPLETED, matchDetail.status());
+        assertEquals(1000, matchDetail.agent1EloBefore());
+        assertEquals(1016, matchDetail.agent1EloAfter());
+        assertEquals(1000, matchDetail.agent2EloBefore());
+        assertEquals(984, matchDetail.agent2EloAfter());
+        assertEquals(1, matchDetail.judgements().size());
+        assertEquals(ClawgicMatchJudgementStatus.ACCEPTED, matchDetail.judgements().getFirst().status());
+        assertTrue(matchDetail.transcriptJson().isArray());
+
+        JsonNode firstTranscriptMessage = matchDetail.transcriptJson().get(0);
+        assertNotNull(firstTranscriptMessage);
+        assertTrue(firstTranscriptMessage.hasNonNull("role"));
+        assertTrue(firstTranscriptMessage.hasNonNull("phase"));
+        assertTrue(firstTranscriptMessage.hasNonNull("content"));
+    }
+
     private ClawgicTournament insertTournament(
             String topic,
             ClawgicTournamentStatus status,
@@ -469,5 +593,25 @@ class ClawgicTournamentServiceIntegrationTest {
         clawgicAgentEloRepository.saveAndFlush(agentElo);
 
         return agentId;
+    }
+
+    private void createTournamentEntry(
+            UUID tournamentId,
+            UUID agentId,
+            int seedPosition,
+            int seedSnapshotElo,
+            OffsetDateTime createdAt
+    ) {
+        ClawgicTournamentEntry entry = new ClawgicTournamentEntry();
+        entry.setEntryId(UUID.randomUUID());
+        entry.setTournamentId(tournamentId);
+        entry.setAgentId(agentId);
+        entry.setWalletAddress(clawgicAgentRepository.findById(agentId).orElseThrow().getWalletAddress());
+        entry.setStatus(ClawgicTournamentEntryStatus.CONFIRMED);
+        entry.setSeedPosition(seedPosition);
+        entry.setSeedSnapshotElo(seedSnapshotElo);
+        entry.setCreatedAt(createdAt);
+        entry.setUpdatedAt(createdAt);
+        clawgicTournamentEntryRepository.saveAndFlush(entry);
     }
 }

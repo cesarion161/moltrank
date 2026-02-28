@@ -65,6 +65,18 @@ public class ClawgicMatch {
     @Column(name = "winner_agent_id")
     private UUID winnerAgentId;
 
+    @Column(name = "agent1_elo_before")
+    private Integer agent1EloBefore;
+
+    @Column(name = "agent1_elo_after")
+    private Integer agent1EloAfter;
+
+    @Column(name = "agent2_elo_before")
+    private Integer agent2EloBefore;
+
+    @Column(name = "agent2_elo_after")
+    private Integer agent2EloAfter;
+
     @Column(name = "forfeit_reason", columnDefinition = "TEXT")
     private String forfeitReason;
 

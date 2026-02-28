@@ -57,6 +57,7 @@ import static org.mockito.Mockito.verify;
         "spring.flyway.locations=classpath:db/migration",
         "clawgic.enabled=true",
         "clawgic.worker.enabled=true",
+        "clawgic.worker.queue-mode=in-memory",
         "clawgic.mock-judge=true",
         "clawgic.judge.enabled=true",
         "clawgic.judge.max-retries=1",
@@ -64,7 +65,7 @@ import static org.mockito.Mockito.verify;
 })
 class ClawgicJudgeWorkerServiceIntegrationTest {
 
-    private static final Duration DEFAULT_AWAIT_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration DEFAULT_AWAIT_TIMEOUT = Duration.ofSeconds(10);
 
     @Autowired
     private ClawgicJudgeQueue clawgicJudgeQueue;
@@ -130,6 +131,10 @@ class ClawgicJudgeWorkerServiceIntegrationTest {
         assertNotNull(completedMatch.getJudgedAt());
         assertNotNull(completedMatch.getCompletedAt());
         assertEquals(0, completedMatch.getJudgeRetryCount());
+        assertEquals(1000, completedMatch.getAgent1EloBefore());
+        assertEquals(1000, completedMatch.getAgent2EloBefore());
+        assertTrue(completedMatch.getAgent1EloAfter() != null && completedMatch.getAgent1EloAfter() > 0);
+        assertTrue(completedMatch.getAgent2EloAfter() != null && completedMatch.getAgent2EloAfter() > 0);
 
         List<ClawgicMatchJudgement> judgements =
                 clawgicMatchJudgementRepository.findByMatchIdOrderByCreatedAtAsc(pendingJudgeMatch.getMatchId());

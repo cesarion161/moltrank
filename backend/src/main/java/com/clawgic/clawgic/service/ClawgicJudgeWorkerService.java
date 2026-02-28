@@ -209,18 +209,61 @@ public class ClawgicJudgeWorkerService {
             );
         }
 
-        clawgicAgentEloService.applyJudgedMatchResult(
+        ClawgicAgentEloService.EloUpdateResult eloUpdateResult = clawgicAgentEloService.applyJudgedMatchResult(
                 match.getMatchId(),
                 match.getAgent1Id(),
                 match.getAgent2Id(),
                 selectedVerdict.getWinnerAgentId()
         );
+        applyEloSnapshots(match, eloUpdateResult);
         match.setWinnerAgentId(selectedVerdict.getWinnerAgentId());
         match.setJudgeResultJson(selectedVerdict.getResultJson());
         match.setStatus(ClawgicMatchStatus.COMPLETED);
         match.setJudgedAt(now);
         match.setCompletedAt(now);
         match.setUpdatedAt(now);
+    }
+
+    private void applyEloSnapshots(
+            ClawgicMatch match,
+            ClawgicAgentEloService.EloUpdateResult eloUpdateResult
+    ) {
+        UUID agent1Id = match.getAgent1Id();
+        UUID agent2Id = match.getAgent2Id();
+        if (agent1Id == null || agent2Id == null) {
+            return;
+        }
+
+        match.setAgent1EloBefore(resolveEloBefore(agent1Id, eloUpdateResult));
+        match.setAgent1EloAfter(resolveEloAfter(agent1Id, eloUpdateResult));
+        match.setAgent2EloBefore(resolveEloBefore(agent2Id, eloUpdateResult));
+        match.setAgent2EloAfter(resolveEloAfter(agent2Id, eloUpdateResult));
+    }
+
+    private static Integer resolveEloBefore(
+            UUID agentId,
+            ClawgicAgentEloService.EloUpdateResult eloUpdateResult
+    ) {
+        if (agentId.equals(eloUpdateResult.winnerAgentId())) {
+            return eloUpdateResult.winnerRatingBefore();
+        }
+        if (agentId.equals(eloUpdateResult.loserAgentId())) {
+            return eloUpdateResult.loserRatingBefore();
+        }
+        return null;
+    }
+
+    private static Integer resolveEloAfter(
+            UUID agentId,
+            ClawgicAgentEloService.EloUpdateResult eloUpdateResult
+    ) {
+        if (agentId.equals(eloUpdateResult.winnerAgentId())) {
+            return eloUpdateResult.winnerRatingAfter();
+        }
+        if (agentId.equals(eloUpdateResult.loserAgentId())) {
+            return eloUpdateResult.loserRatingAfter();
+        }
+        return null;
     }
 
     private ClawgicMatchJudgement initializeJudgement(

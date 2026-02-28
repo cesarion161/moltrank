@@ -42,6 +42,18 @@ public class ClawgicTournamentController {
         return ResponseEntity.ok(clawgicTournamentService.listUpcomingTournaments());
     }
 
+    @GetMapping("/results")
+    public ResponseEntity<List<ClawgicTournamentResponses.TournamentSummary>> listTournamentsForResults() {
+        return ResponseEntity.ok(clawgicTournamentService.listTournamentsForResults());
+    }
+
+    @GetMapping("/{tournamentId}/results")
+    public ResponseEntity<ClawgicTournamentResponses.TournamentResults> getTournamentResults(
+            @PathVariable UUID tournamentId
+    ) {
+        return ResponseEntity.ok(clawgicTournamentService.getTournamentResults(tournamentId));
+    }
+
     @PostMapping("/{tournamentId}/enter")
     public ResponseEntity<ClawgicTournamentResponses.TournamentEntry> enterTournament(
             @PathVariable UUID tournamentId,

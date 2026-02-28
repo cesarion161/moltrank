@@ -13,6 +13,8 @@ import java.util.UUID;
 
 @Repository
 public interface ClawgicMatchJudgementRepository extends JpaRepository<ClawgicMatchJudgement, UUID> {
+    List<ClawgicMatchJudgement> findByTournamentIdOrderByMatchIdAscAttemptAscCreatedAtAsc(UUID tournamentId);
+
     List<ClawgicMatchJudgement> findByMatchIdOrderByCreatedAtAsc(UUID matchId);
 
     List<ClawgicMatchJudgement> findByMatchIdAndStatusOrderByCreatedAtAsc(

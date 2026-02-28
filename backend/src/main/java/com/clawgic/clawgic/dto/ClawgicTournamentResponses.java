@@ -5,6 +5,7 @@ import com.clawgic.clawgic.model.ClawgicTournamentStatus;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public final class ClawgicTournamentResponses {
@@ -58,6 +59,13 @@ public final class ClawgicTournamentResponses {
             Integer seedSnapshotElo,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt
+    ) {
+    }
+
+    public record TournamentResults(
+            TournamentDetail tournament,
+            List<TournamentEntry> entries,
+            List<ClawgicMatchResponses.MatchDetail> matches
     ) {
     }
 }

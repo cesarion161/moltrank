@@ -8,6 +8,8 @@ set -euo pipefail
 # - /api/clawgic/health should be 200 (Step C04 stub endpoint).
 # - /api/clawgic/agents should be 200 (Step C16).
 # - /api/clawgic/tournaments should be 200 (Step C17).
+# - /api/clawgic/tournaments/results should be 200 (Step C45 results index).
+# - /api/clawgic/tournaments/{id}/results should return 404 on unknown tournament.
 # - /api/clawgic/tournaments/{id}/bracket returns 404 on unknown tournament (Step C19).
 # - /api/clawgic/matches may be 404 until that API lands.
 # - tournament entry POST may return 404 (unknown tournament) or 402 (x402 challenge path).
@@ -133,6 +135,10 @@ run_checks() {
 
   # Tournament list endpoint is required from Step C17.
   assert_request "tournaments-list" "GET" "/api/clawgic/tournaments" "200"
+  assert_request "tournaments-results-index" "GET" "/api/clawgic/tournaments/results" "200"
+  assert_request "tournaments-results-detail" "GET" \
+    "/api/clawgic/tournaments/00000000-0000-0000-0000-000000000000/results" \
+    "404"
   assert_request "tournaments-create-validation" "POST" "/api/clawgic/tournaments" "400" '{}'
 
   # Placeholder-safe list endpoints: absent routes are expected early in the plan.

@@ -8,6 +8,7 @@ import com.clawgic.clawgic.dto.ClawgicUserResponse;
 import com.clawgic.clawgic.model.ClawgicAgent;
 import com.clawgic.clawgic.model.ClawgicAgentElo;
 import com.clawgic.clawgic.model.ClawgicMatch;
+import com.clawgic.clawgic.model.ClawgicMatchJudgement;
 import com.clawgic.clawgic.model.ClawgicPaymentAuthorization;
 import com.clawgic.clawgic.model.ClawgicStakingLedger;
 import com.clawgic.clawgic.model.ClawgicTournament;
@@ -180,6 +181,13 @@ public class ClawgicResponseMapper {
     }
 
     public ClawgicMatchResponses.MatchDetail toMatchDetailResponse(ClawgicMatch match) {
+        return toMatchDetailResponse(match, List.of());
+    }
+
+    public ClawgicMatchResponses.MatchDetail toMatchDetailResponse(
+            ClawgicMatch match,
+            Collection<ClawgicMatchJudgement> judgements
+    ) {
         return new ClawgicMatchResponses.MatchDetail(
                 match.getMatchId(),
                 match.getTournamentId(),
@@ -194,8 +202,15 @@ public class ClawgicResponseMapper {
                 match.getTranscriptJson(),
                 match.getJudgeResultJson(),
                 match.getWinnerAgentId(),
+                match.getAgent1EloBefore(),
+                match.getAgent1EloAfter(),
+                match.getAgent2EloBefore(),
+                match.getAgent2EloAfter(),
                 match.getForfeitReason(),
                 match.getJudgeRetryCount(),
+                judgements.stream()
+                        .map(this::toMatchJudgementSummaryResponse)
+                        .toList(),
                 match.getExecutionDeadlineAt(),
                 match.getJudgeDeadlineAt(),
                 match.getStartedAt(),
@@ -205,6 +220,31 @@ public class ClawgicResponseMapper {
                 match.getCompletedAt(),
                 match.getCreatedAt(),
                 match.getUpdatedAt()
+        );
+    }
+
+    public ClawgicMatchResponses.MatchJudgementSummary toMatchJudgementSummaryResponse(
+            ClawgicMatchJudgement judgement
+    ) {
+        return new ClawgicMatchResponses.MatchJudgementSummary(
+                judgement.getJudgementId(),
+                judgement.getMatchId(),
+                judgement.getJudgeKey(),
+                judgement.getJudgeModel(),
+                judgement.getStatus(),
+                judgement.getAttempt(),
+                judgement.getResultJson(),
+                judgement.getWinnerAgentId(),
+                judgement.getAgent1LogicScore(),
+                judgement.getAgent1PersonaAdherenceScore(),
+                judgement.getAgent1RebuttalStrengthScore(),
+                judgement.getAgent2LogicScore(),
+                judgement.getAgent2PersonaAdherenceScore(),
+                judgement.getAgent2RebuttalStrengthScore(),
+                judgement.getReasoning(),
+                judgement.getJudgedAt(),
+                judgement.getCreatedAt(),
+                judgement.getUpdatedAt()
         );
     }
 

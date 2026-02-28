@@ -9,6 +9,7 @@ import com.clawgic.clawgic.mapper.ClawgicResponseMapper;
 import com.clawgic.clawgic.model.ClawgicAgent;
 import com.clawgic.clawgic.model.ClawgicAgentElo;
 import com.clawgic.clawgic.model.ClawgicMatch;
+import com.clawgic.clawgic.model.ClawgicMatchJudgement;
 import com.clawgic.clawgic.model.ClawgicMatchStatus;
 import com.clawgic.clawgic.model.ClawgicPaymentAuthorization;
 import com.clawgic.clawgic.model.ClawgicPaymentAuthorizationStatus;
@@ -21,12 +22,14 @@ import com.clawgic.clawgic.model.ClawgicTournamentStatus;
 import com.clawgic.clawgic.model.DebateTranscriptJsonCodec;
 import com.clawgic.clawgic.repository.ClawgicAgentEloRepository;
 import com.clawgic.clawgic.repository.ClawgicAgentRepository;
+import com.clawgic.clawgic.repository.ClawgicMatchJudgementRepository;
 import com.clawgic.clawgic.repository.ClawgicMatchRepository;
 import com.clawgic.clawgic.repository.ClawgicPaymentAuthorizationRepository;
 import com.clawgic.clawgic.repository.ClawgicStakingLedgerRepository;
 import com.clawgic.clawgic.repository.ClawgicTournamentEntryRepository;
 import com.clawgic.clawgic.repository.ClawgicTournamentRepository;
 import com.clawgic.clawgic.web.X402PaymentRequestException;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +39,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.List;
 import java.util.UUID;
@@ -49,6 +53,7 @@ public class ClawgicTournamentService {
     private final ClawgicAgentRepository clawgicAgentRepository;
     private final ClawgicAgentEloRepository clawgicAgentEloRepository;
     private final ClawgicMatchRepository clawgicMatchRepository;
+    private final ClawgicMatchJudgementRepository clawgicMatchJudgementRepository;
     private final ClawgicTournamentRepository clawgicTournamentRepository;
     private final ClawgicTournamentEntryRepository clawgicTournamentEntryRepository;
     private final ClawgicPaymentAuthorizationRepository clawgicPaymentAuthorizationRepository;
@@ -63,6 +68,7 @@ public class ClawgicTournamentService {
             ClawgicAgentRepository clawgicAgentRepository,
             ClawgicAgentEloRepository clawgicAgentEloRepository,
             ClawgicMatchRepository clawgicMatchRepository,
+            ClawgicMatchJudgementRepository clawgicMatchJudgementRepository,
             ClawgicTournamentRepository clawgicTournamentRepository,
             ClawgicTournamentEntryRepository clawgicTournamentEntryRepository,
             ClawgicPaymentAuthorizationRepository clawgicPaymentAuthorizationRepository,
@@ -76,6 +82,7 @@ public class ClawgicTournamentService {
         this.clawgicAgentRepository = clawgicAgentRepository;
         this.clawgicAgentEloRepository = clawgicAgentEloRepository;
         this.clawgicMatchRepository = clawgicMatchRepository;
+        this.clawgicMatchJudgementRepository = clawgicMatchJudgementRepository;
         this.clawgicTournamentRepository = clawgicTournamentRepository;
         this.clawgicTournamentEntryRepository = clawgicTournamentEntryRepository;
         this.clawgicPaymentAuthorizationRepository = clawgicPaymentAuthorizationRepository;
@@ -134,6 +141,66 @@ public class ClawgicTournamentService {
                         OffsetDateTime.now()
                 );
         return clawgicResponseMapper.toTournamentSummaryResponses(upcomingTournaments);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ClawgicTournamentResponses.TournamentSummary> listTournamentsForResults() {
+        List<ClawgicTournament> tournaments = clawgicTournamentRepository.findAll(
+                Sort.by(
+                        Sort.Order.desc("startTime"),
+                        Sort.Order.desc("createdAt")
+                )
+        );
+        return clawgicResponseMapper.toTournamentSummaryResponses(
+                tournaments.stream()
+                        .limit(50)
+                        .toList()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public ClawgicTournamentResponses.TournamentResults getTournamentResults(UUID tournamentId) {
+        ClawgicTournament tournament = clawgicTournamentRepository.findById(tournamentId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Clawgic tournament not found: " + tournamentId
+                ));
+
+        List<ClawgicTournamentEntry> entries = clawgicTournamentEntryRepository
+                .findByTournamentIdOrderByCreatedAtAsc(tournamentId);
+        List<ClawgicMatch> matches = clawgicMatchRepository
+                .findByTournamentIdOrderByBracketRoundAscBracketPositionAscCreatedAtAsc(tournamentId);
+        List<ClawgicMatchJudgement> judgements = clawgicMatchJudgementRepository
+                .findByTournamentIdOrderByMatchIdAscAttemptAscCreatedAtAsc(tournamentId);
+
+        Map<UUID, List<ClawgicMatchJudgement>> judgementsByMatch = judgements.stream()
+                .collect(Collectors.groupingBy(
+                        ClawgicMatchJudgement::getMatchId,
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+
+        List<ClawgicMatchResponses.MatchDetail> matchDetails = matches.stream()
+                .map(match -> clawgicResponseMapper.toMatchDetailResponse(
+                        match,
+                        judgementsByMatch.getOrDefault(match.getMatchId(), List.of())
+                ))
+                .toList();
+
+        List<ClawgicTournamentEntry> sortedEntries = entries.stream()
+                .sorted(Comparator
+                        .comparing(
+                                ClawgicTournamentEntry::getSeedPosition,
+                                Comparator.nullsLast(Integer::compareTo)
+                        )
+                        .thenComparing(ClawgicTournamentEntry::getCreatedAt))
+                .toList();
+
+        return new ClawgicTournamentResponses.TournamentResults(
+                clawgicResponseMapper.toTournamentDetailResponse(tournament),
+                clawgicResponseMapper.toTournamentEntryResponses(sortedEntries),
+                matchDetails
+        );
     }
 
     @Transactional(noRollbackFor = X402PaymentRequestException.class)

@@ -2,9 +2,12 @@ package com.clawgic.clawgic.controller;
 
 import com.clawgic.clawgic.dto.ClawgicMatchResponses;
 import com.clawgic.clawgic.dto.ClawgicTournamentResponses;
+import com.clawgic.clawgic.model.ClawgicMatchJudgementStatus;
 import com.clawgic.clawgic.model.ClawgicMatchStatus;
 import com.clawgic.clawgic.model.ClawgicTournamentEntryStatus;
 import com.clawgic.clawgic.model.ClawgicTournamentStatus;
+import com.clawgic.clawgic.model.DebatePhase;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.clawgic.clawgic.service.ClawgicTournamentService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -106,6 +109,39 @@ class ClawgicTournamentControllerTest {
                 .andExpect(jsonPath("$[0].tournamentId").value(firstId.toString()))
                 .andExpect(jsonPath("$[0].status").value("SCHEDULED"))
                 .andExpect(jsonPath("$[1].tournamentId").value(secondId.toString()));
+    }
+
+    @Test
+    void listTournamentsForResultsReturnsSummaries() throws Exception {
+        UUID completedId = UUID.fromString("00000000-0000-0000-0000-000000000413");
+        when(clawgicTournamentService.listTournamentsForResults())
+                .thenReturn(List.of(sampleSummary(completedId, "Completed Debate")));
+
+        mockMvc.perform(get("/api/clawgic/tournaments/results"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].tournamentId").value(completedId.toString()))
+                .andExpect(jsonPath("$[0].topic").value("Completed Debate"));
+    }
+
+    @Test
+    void getTournamentResultsReturnsTournamentMatchesAndJudgements() throws Exception {
+        UUID tournamentId = UUID.fromString("00000000-0000-0000-0000-000000000414");
+        UUID matchId = UUID.fromString("00000000-0000-0000-0000-000000000415");
+        when(clawgicTournamentService.getTournamentResults(tournamentId))
+                .thenReturn(sampleTournamentResults(tournamentId, matchId));
+
+        mockMvc.perform(get("/api/clawgic/tournaments/{tournamentId}/results", tournamentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tournament.tournamentId").value(tournamentId.toString()))
+                .andExpect(jsonPath("$.matches.length()").value(1))
+                .andExpect(jsonPath("$.matches[0].matchId").value(matchId.toString()))
+                .andExpect(jsonPath("$.matches[0].status").value("COMPLETED"))
+                .andExpect(jsonPath("$.matches[0].agent1EloBefore").value(1000))
+                .andExpect(jsonPath("$.matches[0].agent1EloAfter").value(1016))
+                .andExpect(jsonPath("$.matches[0].judgements.length()").value(1))
+                .andExpect(jsonPath("$.matches[0].judgements[0].status").value("ACCEPTED"))
+                .andExpect(jsonPath("$.matches[0].judgements[0].resultJson").isMap());
     }
 
     @Test
@@ -270,6 +306,72 @@ class ClawgicTournamentControllerTest {
                 null,
                 now,
                 now
+        );
+    }
+
+    private static ClawgicTournamentResponses.TournamentResults sampleTournamentResults(
+            UUID tournamentId,
+            UUID matchId
+    ) {
+        OffsetDateTime now = OffsetDateTime.parse("2026-05-02T12:00:00Z");
+        UUID agentOne = UUID.fromString("00000000-0000-0000-0000-000000000510");
+        UUID agentTwo = UUID.fromString("00000000-0000-0000-0000-000000000511");
+        ClawgicMatchResponses.MatchJudgementSummary judgementSummary = new ClawgicMatchResponses.MatchJudgementSummary(
+                UUID.fromString("00000000-0000-0000-0000-000000000516"),
+                matchId,
+                "mock-judge-primary",
+                "mock-gpt4o",
+                ClawgicMatchJudgementStatus.ACCEPTED,
+                1,
+                JsonNodeFactory.instance.objectNode().put("winner_id", agentOne.toString()),
+                agentOne,
+                9,
+                8,
+                9,
+                8,
+                7,
+                8,
+                "Agent one was more consistent in rebuttal depth.",
+                now,
+                now,
+                now
+        );
+        ClawgicMatchResponses.MatchDetail matchDetail = new ClawgicMatchResponses.MatchDetail(
+                matchId,
+                tournamentId,
+                agentOne,
+                agentTwo,
+                1,
+                1,
+                null,
+                null,
+                ClawgicMatchStatus.COMPLETED,
+                DebatePhase.CONCLUSION,
+                JsonNodeFactory.instance.arrayNode(),
+                JsonNodeFactory.instance.objectNode().put("winner_id", agentOne.toString()),
+                agentOne,
+                1000,
+                1016,
+                1000,
+                984,
+                null,
+                0,
+                List.of(judgementSummary),
+                now,
+                now,
+                now,
+                now,
+                now,
+                null,
+                now,
+                now,
+                now
+        );
+
+        return new ClawgicTournamentResponses.TournamentResults(
+                sampleDetail(tournamentId),
+                List.of(sampleEntry(tournamentId, agentOne), sampleEntry(tournamentId, agentTwo)),
+                List.of(matchDetail)
         );
     }
 }

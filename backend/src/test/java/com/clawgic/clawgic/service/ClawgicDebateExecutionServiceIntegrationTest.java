@@ -55,6 +55,7 @@ import static org.mockito.Mockito.verify;
         "spring.flyway.locations=classpath:db/migration",
         "clawgic.mock-provider=true",
         "clawgic.debate.provider-timeout-seconds=1",
+        "clawgic.worker.queue-mode=in-memory",
         "clawgic.judge.keys[0]=mock-judge-primary",
         "clawgic.judge.keys[1]=mock-judge-secondary"
 })
