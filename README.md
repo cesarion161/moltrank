@@ -94,6 +94,24 @@ This starts:
 - backend (`http://localhost:8080`)
 - frontend (`http://localhost:3000`)
 
+### 7) One-command Clawgic MVP demo run (seed + worker + tournament)
+
+```bash
+make clawgic-demo
+```
+
+This command runs an end-to-end deterministic mock demo:
+- starts PostgreSQL (docker compose)
+- starts backend on `http://localhost:18080` with Clawgic worker + in-memory judge queue
+- seeds 4 demo agents and a tournament
+- enters agents, builds bracket, waits for execution + judging completion
+- writes run artifacts under `artifacts/clawgic-demo/<run-id>/` (results, leaderboard, winner detail, summary)
+
+Useful overrides:
+- `BACKEND_PORT=19090 make clawgic-demo`
+- `START_DELAY_SECONDS=45 ENTRY_CLOSE_DELAY_SECONDS=20 make clawgic-demo`
+- `AUTO_START_BACKEND=false BASE_URL=http://localhost:8080 make clawgic-demo`
+
 ## Clawgic Feature Flags (Step C02)
 
 Clawgic is currently introduced behind backend flags in `backend/src/main/resources/application.yml`.
@@ -145,3 +163,4 @@ These are preserved but not part of the active Clawgic MVP path:
 - `make frontend-test` - frontend tests
 - `make smoke-endpoints` - legacy MoltRank endpoint smoke test
 - `make anchor-test` - legacy Anchor test flow
+- `make clawgic-demo` - one-command Clawgic deterministic demo runner (Step C52)

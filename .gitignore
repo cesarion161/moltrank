@@ -52,6 +52,7 @@ simulation/.pytest_cache/
 *.swo
 *~
 simulation/output/
+artifacts/
 
 # Intellij IDEA
 .idea/**
