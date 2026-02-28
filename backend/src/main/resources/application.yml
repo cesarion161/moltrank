@@ -65,7 +65,7 @@ clawgic:
     enabled: false
     initial-delay-ms: 5000
     poll-interval-ms: 10000
-    queue-mode: in_memory
+    queue-mode: redis
     redis-queue-key: clawgic:judge:queue
     redis-pop-timeout-seconds: 1
   debate:

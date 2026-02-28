@@ -18,9 +18,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.argThat;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -33,6 +35,9 @@ class RedisClawgicJudgeQueueTest {
     @Mock
     private ListOperations<String, String> listOperations;
 
+    @Mock
+    private InMemoryClawgicJudgeQueue fallbackQueue;
+
     private ClawgicRuntimeProperties clawgicRuntimeProperties;
     private RedisClawgicJudgeQueue redisClawgicJudgeQueue;
 
@@ -44,15 +49,15 @@ class RedisClawgicJudgeQueueTest {
         redisClawgicJudgeQueue = new RedisClawgicJudgeQueue(
                 stringRedisTemplate,
                 clawgicRuntimeProperties,
-                new ObjectMapper()
+                fallbackQueue
         );
-        when(stringRedisTemplate.opsForList()).thenReturn(listOperations);
     }
 
     @Test
     void enqueuePushesSerializedMessageOntoConfiguredQueue() {
         UUID matchId = UUID.randomUUID();
         ClawgicJudgeQueueMessage message = new ClawgicJudgeQueueMessage(matchId, "mock-judge-primary");
+        when(stringRedisTemplate.opsForList()).thenReturn(listOperations);
         when(listOperations.rightPush(eq("clawgic:test:judge:queue"), anyString())).thenReturn(1L);
 
         redisClawgicJudgeQueue.enqueue(message);
@@ -61,6 +66,20 @@ class RedisClawgicJudgeQueueTest {
                 eq("clawgic:test:judge:queue"),
                 argThat(payload -> payload.contains(matchId.toString()) && payload.contains("\"judgeKey\":\"mock-judge-primary\""))
         );
+        verify(fallbackQueue, never()).enqueue(any());
+    }
+
+    @Test
+    void enqueueFallsBackToInMemoryWhenRedisPushFails() {
+        UUID matchId = UUID.randomUUID();
+        ClawgicJudgeQueueMessage message = new ClawgicJudgeQueueMessage(matchId, "mock-judge-primary");
+        when(stringRedisTemplate.opsForList()).thenReturn(listOperations);
+        when(listOperations.rightPush(eq("clawgic:test:judge:queue"), anyString()))
+                .thenThrow(new RuntimeException("redis unavailable"));
+
+        redisClawgicJudgeQueue.enqueue(message);
+
+        verify(fallbackQueue).enqueue(message);
     }
 
     @Test
@@ -68,10 +87,12 @@ class RedisClawgicJudgeQueueTest {
         UUID matchId = UUID.randomUUID();
         ClawgicJudgeQueueMessage queuedMessage = new ClawgicJudgeQueueMessage(matchId, "mock-judge-primary");
         String payload = new ObjectMapper().writeValueAsString(queuedMessage);
+        when(stringRedisTemplate.opsForList()).thenReturn(listOperations);
         when(listOperations.leftPop("clawgic:test:judge:queue", 2L, TimeUnit.SECONDS)).thenReturn(payload);
 
         AtomicReference<ClawgicJudgeQueueMessage> receivedMessage = new AtomicReference<>();
         redisClawgicJudgeQueue.setConsumer(receivedMessage::set);
+        verify(fallbackQueue).setConsumer(any());
 
         boolean processed = redisClawgicJudgeQueue.pollOnce();
 
@@ -81,6 +102,7 @@ class RedisClawgicJudgeQueueTest {
 
     @Test
     void pollOnceReturnsFalseWhenQueueIsEmpty() throws InterruptedException {
+        when(stringRedisTemplate.opsForList()).thenReturn(listOperations);
         when(listOperations.leftPop("clawgic:test:judge:queue", 2L, TimeUnit.SECONDS)).thenReturn(null);
         redisClawgicJudgeQueue.setConsumer(ignored -> {
         });

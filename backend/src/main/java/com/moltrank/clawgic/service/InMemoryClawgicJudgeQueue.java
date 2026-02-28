@@ -4,7 +4,6 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.util.Objects;
@@ -12,12 +11,6 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
 @Service
-@ConditionalOnProperty(
-        prefix = "clawgic.worker",
-        name = "queue-mode",
-        havingValue = "in_memory",
-        matchIfMissing = true
-)
 public class InMemoryClawgicJudgeQueue implements ClawgicJudgeQueue {
 
     private static final Logger log = LoggerFactory.getLogger(InMemoryClawgicJudgeQueue.class);

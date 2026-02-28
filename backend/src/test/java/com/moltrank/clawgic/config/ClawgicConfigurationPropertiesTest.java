@@ -51,7 +51,7 @@ class ClawgicConfigurationPropertiesTest {
             assertEquals(4, clawgic.getTournament().getMvpBracketSize());
             assertEquals(new BigDecimal("0.250000"), clawgic.getTournament().getJudgeFeeUsdcPerCompletedMatch());
             assertEquals(new BigDecimal("0.000000"), clawgic.getTournament().getSystemRetentionRate());
-            assertEquals("in_memory", clawgic.getWorker().getQueueMode());
+            assertEquals("redis", clawgic.getWorker().getQueueMode());
             assertEquals("clawgic:judge:queue", clawgic.getWorker().getRedisQueueKey());
             assertEquals(1L, clawgic.getWorker().getRedisPopTimeoutSeconds());
             assertEquals(3, clawgic.getDebate().getMaxExchangesPerAgent());
