@@ -20,6 +20,7 @@ import com.clawgic.clawgic.model.ClawgicTournamentEntry;
 import com.clawgic.clawgic.model.ClawgicTournamentEntryStatus;
 import com.clawgic.clawgic.model.ClawgicTournamentStatus;
 import com.clawgic.clawgic.model.DebateTranscriptJsonCodec;
+import com.clawgic.clawgic.model.TournamentEntryState;
 import com.clawgic.clawgic.repository.ClawgicAgentEloRepository;
 import com.clawgic.clawgic.repository.ClawgicAgentRepository;
 import com.clawgic.clawgic.repository.ClawgicMatchJudgementRepository;
@@ -138,12 +139,19 @@ public class ClawgicTournamentService {
 
     @Transactional(readOnly = true)
     public List<ClawgicTournamentResponses.TournamentSummary> listUpcomingTournaments() {
+        OffsetDateTime now = OffsetDateTime.now();
         List<ClawgicTournament> upcomingTournaments =
                 clawgicTournamentRepository.findByStatusAndStartTimeAfterOrderByStartTimeAsc(
                         ClawgicTournamentStatus.SCHEDULED,
-                        OffsetDateTime.now()
+                        now
                 );
-        return clawgicResponseMapper.toTournamentSummaryResponses(upcomingTournaments);
+        return upcomingTournaments.stream()
+                .map(tournament -> {
+                    int currentEntries = (int) clawgicTournamentEntryRepository
+                            .countByTournamentId(tournament.getTournamentId());
+                    return toEligibilityEnrichedSummary(tournament, currentEntries, now);
+                })
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -505,6 +513,34 @@ public class ClawgicTournamentService {
                 tournament.getEntryCloseTime(),
                 tournament.getMaxEntries(),
                 now
+        );
+    }
+
+    private ClawgicTournamentResponses.TournamentSummary toEligibilityEnrichedSummary(
+            ClawgicTournament tournament,
+            int currentEntries,
+            OffsetDateTime now
+    ) {
+        TournamentEntryState entryState;
+        String entryStateReason;
+
+        if (tournament.getStatus() != ClawgicTournamentStatus.SCHEDULED) {
+            entryState = TournamentEntryState.TOURNAMENT_NOT_OPEN;
+            entryStateReason = "Tournament is not open for entries (status: " + tournament.getStatus() + ")";
+        } else if (!now.isBefore(tournament.getEntryCloseTime())) {
+            entryState = TournamentEntryState.ENTRY_WINDOW_CLOSED;
+            entryStateReason = "Entry window closed at " + tournament.getEntryCloseTime();
+        } else if (currentEntries >= tournament.getMaxEntries()) {
+            entryState = TournamentEntryState.CAPACITY_REACHED;
+            entryStateReason = "Tournament is full (" + currentEntries + "/" + tournament.getMaxEntries() + ")";
+        } else {
+            entryState = TournamentEntryState.OPEN;
+            entryStateReason = "Accepting entries (" + currentEntries + "/" + tournament.getMaxEntries() + ")";
+        }
+
+        boolean canEnter = entryState == TournamentEntryState.OPEN;
+        return clawgicResponseMapper.toTournamentSummaryResponse(
+                tournament, currentEntries, canEnter, entryState, entryStateReason
         );
     }
 

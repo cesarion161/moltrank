@@ -108,6 +108,10 @@ class ClawgicTournamentControllerTest {
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].tournamentId").value(firstId.toString()))
                 .andExpect(jsonPath("$[0].status").value("SCHEDULED"))
+                .andExpect(jsonPath("$[0].currentEntries").value(0))
+                .andExpect(jsonPath("$[0].canEnter").value(true))
+                .andExpect(jsonPath("$[0].entryState").value("OPEN"))
+                .andExpect(jsonPath("$[0].entryStateReason").value("Accepting entries (0/4)"))
                 .andExpect(jsonPath("$[1].tournamentId").value(secondId.toString()));
     }
 
@@ -259,12 +263,16 @@ class ClawgicTournamentControllerTest {
                 ClawgicTournamentStatus.SCHEDULED,
                 4,
                 4,
+                0,
                 OffsetDateTime.parse("2026-06-01T14:00:00Z"),
                 OffsetDateTime.parse("2026-06-01T13:00:00Z"),
                 new BigDecimal("5.000000"),
                 null,
                 0,
                 0,
+                true,
+                com.clawgic.clawgic.model.TournamentEntryState.OPEN,
+                "Accepting entries (0/4)",
                 created,
                 created
         );

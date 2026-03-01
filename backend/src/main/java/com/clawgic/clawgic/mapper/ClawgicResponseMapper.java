@@ -14,6 +14,7 @@ import com.clawgic.clawgic.model.ClawgicStakingLedger;
 import com.clawgic.clawgic.model.ClawgicTournament;
 import com.clawgic.clawgic.model.ClawgicTournamentEntry;
 import com.clawgic.clawgic.model.ClawgicUser;
+import com.clawgic.clawgic.model.TournamentEntryState;
 import com.clawgic.clawgic.repository.ClawgicAgentLeaderboardRow;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -123,12 +124,44 @@ public class ClawgicResponseMapper {
                 tournament.getStatus(),
                 tournament.getBracketSize(),
                 tournament.getMaxEntries(),
+                null,
                 tournament.getStartTime(),
                 tournament.getEntryCloseTime(),
                 tournament.getBaseEntryFeeUsdc(),
                 tournament.getWinnerAgentId(),
                 tournament.getMatchesCompleted(),
                 tournament.getMatchesForfeited(),
+                null,
+                null,
+                null,
+                tournament.getCreatedAt(),
+                tournament.getUpdatedAt()
+        );
+    }
+
+    public ClawgicTournamentResponses.TournamentSummary toTournamentSummaryResponse(
+            ClawgicTournament tournament,
+            int currentEntries,
+            boolean canEnter,
+            TournamentEntryState entryState,
+            String entryStateReason
+    ) {
+        return new ClawgicTournamentResponses.TournamentSummary(
+                tournament.getTournamentId(),
+                tournament.getTopic(),
+                tournament.getStatus(),
+                tournament.getBracketSize(),
+                tournament.getMaxEntries(),
+                currentEntries,
+                tournament.getStartTime(),
+                tournament.getEntryCloseTime(),
+                tournament.getBaseEntryFeeUsdc(),
+                tournament.getWinnerAgentId(),
+                tournament.getMatchesCompleted(),
+                tournament.getMatchesForfeited(),
+                canEnter,
+                entryState,
+                entryStateReason,
                 tournament.getCreatedAt(),
                 tournament.getUpdatedAt()
         );

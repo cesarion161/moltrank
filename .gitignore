@@ -59,3 +59,10 @@ artifacts/
 **/.idea/**
 /backend/.settings/org.eclipse.jdt.core.prefs
 /.vscode/settings.json
+
+backend/.classpath
+backend/.project
+backend/.factorypath
+backend/.settings
+
+bin

@@ -15,4 +15,6 @@ public interface ClawgicTournamentEntryRepository extends JpaRepository<ClawgicT
     Optional<ClawgicTournamentEntry> findByTournamentIdAndAgentId(UUID tournamentId, UUID agentId);
 
     List<ClawgicTournamentEntry> findByTournamentIdOrderByCreatedAtAsc(UUID tournamentId);
+
+    long countByTournamentId(UUID tournamentId);
 }

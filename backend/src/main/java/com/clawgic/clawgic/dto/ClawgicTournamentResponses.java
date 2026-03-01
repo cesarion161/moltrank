@@ -2,6 +2,7 @@ package com.clawgic.clawgic.dto;
 
 import com.clawgic.clawgic.model.ClawgicTournamentEntryStatus;
 import com.clawgic.clawgic.model.ClawgicTournamentStatus;
+import com.clawgic.clawgic.model.TournamentEntryState;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -19,12 +20,16 @@ public final class ClawgicTournamentResponses {
             ClawgicTournamentStatus status,
             Integer bracketSize,
             Integer maxEntries,
+            Integer currentEntries,
             OffsetDateTime startTime,
             OffsetDateTime entryCloseTime,
             BigDecimal baseEntryFeeUsdc,
             UUID winnerAgentId,
             Integer matchesCompleted,
             Integer matchesForfeited,
+            Boolean canEnter,
+            TournamentEntryState entryState,
+            String entryStateReason,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt
     ) {

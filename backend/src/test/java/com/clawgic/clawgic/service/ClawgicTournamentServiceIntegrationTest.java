@@ -23,6 +23,7 @@ import com.clawgic.clawgic.model.ClawgicTournamentEntryStatus;
 import com.clawgic.clawgic.model.ClawgicTournamentStatus;
 import com.clawgic.clawgic.model.ClawgicUser;
 import com.clawgic.clawgic.model.DebatePhase;
+import com.clawgic.clawgic.model.TournamentEntryState;
 import com.clawgic.clawgic.model.DebateTranscriptJsonCodec;
 import com.clawgic.clawgic.model.DebateTranscriptMessage;
 import com.clawgic.clawgic.model.DebateTranscriptRole;
@@ -48,6 +49,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -162,6 +164,116 @@ class ClawgicTournamentServiceIntegrationTest {
         assertEquals(2, upcoming.size());
         assertEquals(futureEarly.getTournamentId(), upcoming.get(0).tournamentId());
         assertEquals(futureLate.getTournamentId(), upcoming.get(1).tournamentId());
+    }
+
+    @Test
+    void listUpcomingTournamentsReturnsOpenEligibilityForEnterableTournament() {
+        OffsetDateTime now = OffsetDateTime.now();
+        ClawgicTournament tournament = insertTournament(
+                "eligibility open",
+                ClawgicTournamentStatus.SCHEDULED,
+                now.plusHours(3),
+                now.plusHours(2)
+        );
+
+        List<ClawgicTournamentResponses.TournamentSummary> upcoming =
+                clawgicTournamentService.listUpcomingTournaments();
+
+        assertEquals(1, upcoming.size());
+        ClawgicTournamentResponses.TournamentSummary summary = upcoming.getFirst();
+        assertEquals(tournament.getTournamentId(), summary.tournamentId());
+        assertEquals(0, summary.currentEntries());
+        assertTrue(summary.canEnter());
+        assertEquals(TournamentEntryState.OPEN, summary.entryState());
+        assertNotNull(summary.entryStateReason());
+        assertTrue(summary.entryStateReason().contains("0/4"));
+    }
+
+    @Test
+    void listUpcomingTournamentsReturnsEntryWindowClosedForExpiredWindow() {
+        OffsetDateTime now = OffsetDateTime.now();
+        insertTournament(
+                "window closed",
+                ClawgicTournamentStatus.SCHEDULED,
+                now.plusHours(3),
+                now.minusMinutes(5)
+        );
+
+        List<ClawgicTournamentResponses.TournamentSummary> upcoming =
+                clawgicTournamentService.listUpcomingTournaments();
+
+        assertEquals(1, upcoming.size());
+        ClawgicTournamentResponses.TournamentSummary summary = upcoming.getFirst();
+        assertFalse(summary.canEnter());
+        assertEquals(TournamentEntryState.ENTRY_WINDOW_CLOSED, summary.entryState());
+        assertNotNull(summary.entryStateReason());
+    }
+
+    @Test
+    void listUpcomingTournamentsReturnsCapacityReachedForFullTournament() {
+        OffsetDateTime now = OffsetDateTime.now();
+        ClawgicTournament tournament = insertTournament(
+                "capacity full",
+                ClawgicTournamentStatus.SCHEDULED,
+                now.plusHours(3),
+                now.plusHours(2),
+                2
+        );
+
+        String walletOne = "0xC57A111111111111111111111111111111111111";
+        String walletTwo = "0xC57A222222222222222222222222222222222222";
+        createUser(walletOne);
+        createUser(walletTwo);
+        UUID agentOne = createAgentWithElo(walletOne, "c57 agent one", 1000);
+        UUID agentTwo = createAgentWithElo(walletTwo, "c57 agent two", 1000);
+        clawgicTournamentService.enterTournament(
+                tournament.getTournamentId(),
+                new ClawgicTournamentRequests.EnterTournamentRequest(agentOne)
+        );
+        clawgicTournamentService.enterTournament(
+                tournament.getTournamentId(),
+                new ClawgicTournamentRequests.EnterTournamentRequest(agentTwo)
+        );
+
+        List<ClawgicTournamentResponses.TournamentSummary> upcoming =
+                clawgicTournamentService.listUpcomingTournaments();
+
+        assertEquals(1, upcoming.size());
+        ClawgicTournamentResponses.TournamentSummary summary = upcoming.getFirst();
+        assertEquals(2, summary.currentEntries());
+        assertFalse(summary.canEnter());
+        assertEquals(TournamentEntryState.CAPACITY_REACHED, summary.entryState());
+        assertTrue(summary.entryStateReason().contains("2/2"));
+    }
+
+    @Test
+    void listUpcomingTournamentsReturnsCurrentEntriesCount() {
+        OffsetDateTime now = OffsetDateTime.now();
+        ClawgicTournament tournament = insertTournament(
+                "partial entries",
+                ClawgicTournamentStatus.SCHEDULED,
+                now.plusHours(3),
+                now.plusHours(2),
+                4
+        );
+
+        String wallet = "0xC57B111111111111111111111111111111111111";
+        createUser(wallet);
+        UUID agentId = createAgentWithElo(wallet, "c57 partial agent", 1000);
+        clawgicTournamentService.enterTournament(
+                tournament.getTournamentId(),
+                new ClawgicTournamentRequests.EnterTournamentRequest(agentId)
+        );
+
+        List<ClawgicTournamentResponses.TournamentSummary> upcoming =
+                clawgicTournamentService.listUpcomingTournaments();
+
+        assertEquals(1, upcoming.size());
+        ClawgicTournamentResponses.TournamentSummary summary = upcoming.getFirst();
+        assertEquals(1, summary.currentEntries());
+        assertTrue(summary.canEnter());
+        assertEquals(TournamentEntryState.OPEN, summary.entryState());
+        assertTrue(summary.entryStateReason().contains("1/4"));
     }
 
     @Test
