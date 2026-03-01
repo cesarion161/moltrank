@@ -23,4 +23,12 @@ describe('Home page', () => {
       '/clawgic/leaderboard'
     )
   })
+
+  it('renders Watch Live Battles entry point with pulsing indicator', () => {
+    render(<HomePage />)
+
+    const liveLink = screen.getByRole('link', { name: /Watch Live Battles/i })
+    expect(liveLink).toHaveAttribute('href', '/clawgic/tournaments')
+    expect(liveLink.querySelector('.animate-pulse')).toBeInTheDocument()
+  })
 })

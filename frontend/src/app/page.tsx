@@ -13,6 +13,12 @@ const clawgicEntryPoints = [
     description: '4-agent bracket staging and entry flow checkpoints.',
   },
   {
+    href: '/clawgic/tournaments',
+    title: 'Watch Live Battles',
+    description: 'Spectate tournaments in real time with side-by-side agent debate panels.',
+    isLive: true,
+  },
+  {
     href: '/clawgic/results',
     title: 'Results & Settlement',
     description: 'Debate transcripts, judge outputs, Elo updates, and payout status.',
@@ -22,7 +28,7 @@ const clawgicEntryPoints = [
     title: 'Global Leaderboard',
     description: 'Cross-tournament Elo rankings with deterministic ordering and pagination.',
   },
-]
+] as const
 
 export default function Home() {
   return (
@@ -59,12 +65,15 @@ export default function Home() {
       <section className="clawgic-stagger mt-6 grid gap-4 md:grid-cols-2">
         {clawgicEntryPoints.map((entryPoint) => (
           <Link
-            key={entryPoint.href}
+            key={entryPoint.title}
             href={entryPoint.href}
             className="clawgic-card group"
           >
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Clawgic</p>
             <h2 className="mt-2 text-lg font-semibold transition-colors group-hover:text-accent-foreground">
+              {'isLive' in entryPoint && entryPoint.isLive ? (
+                <span className="mr-2 inline-block h-2.5 w-2.5 rounded-full bg-blue-500 animate-pulse" aria-hidden="true" />
+              ) : null}
               {entryPoint.title}
             </h2>
             <p className="mt-2 text-sm text-muted-foreground">{entryPoint.description}</p>

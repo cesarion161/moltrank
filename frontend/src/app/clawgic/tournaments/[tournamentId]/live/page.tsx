@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiClient } from '@/lib/api-client'
 import CountdownTimer from '@/components/countdown-timer'
@@ -123,6 +124,7 @@ export default function LiveBattleArenaPage({
 }: {
   params: Promise<{ tournamentId: string }>
 }) {
+  const router = useRouter()
   const [tournamentId, setTournamentId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -132,7 +134,9 @@ export default function LiveBattleArenaPage({
   const [matchDetail, setMatchDetail] = useState<MatchDetail | null>(null)
   const [matchDetailLoading, setMatchDetailLoading] = useState(false)
   const [pollingActive, setPollingActive] = useState(true)
+  const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null)
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const redirectTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Resolve params
   useEffect(() => {
@@ -263,6 +267,30 @@ export default function LiveBattleArenaPage({
     }
   }, [liveStatus?.activeMatchId])
 
+  // Auto-redirect to results after tournament completion (5-second delay)
+  useEffect(() => {
+    if (liveStatus?.status !== 'COMPLETED') return
+
+    setRedirectCountdown(5)
+    redirectTimerRef.current = setInterval(() => {
+      setRedirectCountdown((prev) => {
+        if (prev === null || prev <= 1) {
+          if (redirectTimerRef.current) clearInterval(redirectTimerRef.current)
+          router.push('/clawgic/results')
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => {
+      if (redirectTimerRef.current) {
+        clearInterval(redirectTimerRef.current)
+        redirectTimerRef.current = null
+      }
+    }
+  }, [liveStatus?.status, router])
+
   const agent1Info = useMemo(() => {
     if (!matchDetail?.agent1Id) return { name: 'TBD', providerType: 'MOCK', elo: null }
     const agent = agents.find((a) => a.agentId === matchDetail.agent1Id)
@@ -339,9 +367,16 @@ export default function LiveBattleArenaPage({
               Tournament Lobby
             </Link>
             {isCompleted ? (
-              <Link href="/clawgic/results" className="clawgic-outline-btn text-sm">
-                View Results
-              </Link>
+              <>
+                <Link href="/clawgic/results" className="clawgic-outline-btn text-sm">
+                  View Results
+                </Link>
+                {redirectCountdown != null && redirectCountdown > 0 ? (
+                  <span className="text-xs text-muted-foreground" data-testid="redirect-countdown">
+                    Redirecting in {redirectCountdown}s...
+                  </span>
+                ) : null}
+              </>
             ) : null}
           </div>
         </div>

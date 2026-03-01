@@ -114,7 +114,17 @@ function classifyEntryConflict(error: ApiRequestError): EntryBanner {
   }
 }
 
-function entryStateBadge(tournament: ClawgicTournamentSummary): { label: string; className: string } {
+function entryStateBadge(tournament: ClawgicTournamentSummary): { label: string; className: string; pulsing?: boolean } {
+  if (tournament.status === 'COMPLETED') {
+    return { label: 'Completed', className: 'border-emerald-400/40 bg-emerald-50 text-emerald-800' }
+  }
+  if (tournament.status === 'IN_PROGRESS') {
+    return { label: 'Live Now', className: 'border-blue-400/40 bg-blue-50 text-blue-800', pulsing: true }
+  }
+  if (tournament.status === 'LOCKED') {
+    return { label: 'Starting Soon', className: 'border-amber-400/40 bg-amber-50 text-amber-800' }
+  }
+
   if (tournament.canEnter === true) {
     return { label: 'Open', className: 'border-emerald-400/40 bg-emerald-50 text-emerald-800' }
   }
@@ -485,7 +495,9 @@ export default function ClawgicTournamentLobbyPage() {
           const backendNotEnterable = tournament.canEnter === false
           const clientExpired = !!expiredTournamentIds[tournamentId]
           const isInProgressOrLocked = tournament.status === 'LOCKED' || tournament.status === 'IN_PROGRESS'
-          const canSubmit = agents.length > 0 && !isSubmitting && !isFull && !backendNotEnterable && !clientExpired
+          const isCompleted = tournament.status === 'COMPLETED'
+          const showEntryControls = !isInProgressOrLocked && !isCompleted
+          const canSubmit = showEntryControls && agents.length > 0 && !isSubmitting && !isFull && !backendNotEnterable && !clientExpired
           const badge = entryStateBadge(tournament)
           const entriesDisplay =
             tournament.currentEntries != null
@@ -526,16 +538,31 @@ export default function ClawgicTournamentLobbyPage() {
                   {isInProgressOrLocked ? (
                     <Link
                       href={`/clawgic/tournaments/${tournamentId}/live`}
-                      className="mt-1 inline-block text-sm font-medium text-primary underline decoration-primary/40 hover:decoration-primary/70"
+                      className="clawgic-primary-btn mt-2 inline-flex items-center gap-2 text-sm"
                     >
+                      {tournament.status === 'IN_PROGRESS' ? (
+                        <span className="inline-block h-2 w-2 rounded-full bg-white animate-pulse" />
+                      ) : null}
                       Watch Live
+                    </Link>
+                  ) : null}
+                  {isCompleted ? (
+                    <Link
+                      href="/clawgic/results"
+                      className="clawgic-outline-btn mt-2 inline-block text-sm"
+                    >
+                      View Results
                     </Link>
                   ) : null}
                 </div>
                 <span
                   className={`clawgic-badge ${badge.className}`}
                   data-entry-state={tournament.entryState || 'UNKNOWN'}
+                  data-tournament-status={tournament.status}
                 >
+                  {badge.pulsing ? (
+                    <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                  ) : null}
                   {badge.label}
                 </span>
               </div>
@@ -546,37 +573,39 @@ export default function ClawgicTournamentLobbyPage() {
                 </p>
               ) : null}
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-                <label className="grid gap-2 text-sm">
-                  <span className="text-muted-foreground">Select agent</span>
-                  <select
-                    value={selectedAgentId}
-                    onChange={(event) =>
-                      setSelectedAgentByTournament((previous) => ({
-                        ...previous,
-                        [tournamentId]: event.target.value,
-                      }))
-                    }
-                    disabled={agents.length === 0 || isSubmitting || backendNotEnterable || clientExpired}
-                    className="clawgic-select"
-                    aria-label={`Select agent for ${tournament.topic}`}
+              {showEntryControls ? (
+                <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                  <label className="grid gap-2 text-sm">
+                    <span className="text-muted-foreground">Select agent</span>
+                    <select
+                      value={selectedAgentId}
+                      onChange={(event) =>
+                        setSelectedAgentByTournament((previous) => ({
+                          ...previous,
+                          [tournamentId]: event.target.value,
+                        }))
+                      }
+                      disabled={agents.length === 0 || isSubmitting || backendNotEnterable || clientExpired}
+                      className="clawgic-select"
+                      aria-label={`Select agent for ${tournament.topic}`}
+                    >
+                      {agents.map((agent) => (
+                        <option key={agent.agentId} value={agent.agentId}>
+                          {agent.name} ({agent.providerType})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handleEnterTournament(tournament)}
+                    disabled={!canSubmit}
+                    className="clawgic-primary-btn"
                   >
-                    {agents.map((agent) => (
-                      <option key={agent.agentId} value={agent.agentId}>
-                        {agent.name} ({agent.providerType})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => handleEnterTournament(tournament)}
-                  disabled={!canSubmit}
-                  className="clawgic-primary-btn"
-                >
-                  {isSubmitting ? 'Entering...' : 'Enter Tournament'}
-                </button>
-              </div>
+                    {isSubmitting ? 'Entering...' : 'Enter Tournament'}
+                  </button>
+                </div>
+              ) : null}
 
               {banner ? (
                 <div

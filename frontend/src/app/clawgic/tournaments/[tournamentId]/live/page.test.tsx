@@ -2,6 +2,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import LiveBattleArenaPage from './page'
 
+const mockRouterPush = vi.fn()
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: mockRouterPush,
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+  }),
+}))
+
 function mockResponse(init: {
   ok: boolean
   status: number
@@ -134,6 +146,7 @@ describe('LiveBattleArenaPage', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     setupFetch()
+    mockRouterPush.mockReset()
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
@@ -605,5 +618,44 @@ describe('LiveBattleArenaPage', () => {
       const sf1Button = screen.getByRole('button', { name: /Semifinal 1/i })
       expect(sf1Button.className).toContain('bracket-advance')
     })
+  })
+
+  it('shows redirect countdown and navigates to results after tournament completes', async () => {
+    const completedLiveStatus = {
+      ...sampleLiveStatus,
+      status: 'COMPLETED',
+      activeMatchId: null,
+      tournamentWinnerAgentId: 'aaaa-1111',
+      matchesCompleted: 3,
+      matchesForfeited: 0,
+      bracket: [
+        { ...sampleLiveStatus.bracket[0], status: 'COMPLETED', winnerAgentId: 'aaaa-1111' },
+        { ...sampleLiveStatus.bracket[1], status: 'COMPLETED', winnerAgentId: 'aaaa-2222' },
+        { ...sampleLiveStatus.bracket[2], status: 'COMPLETED', agent1Id: 'aaaa-1111', agent2Id: 'aaaa-2222', winnerAgentId: 'aaaa-1111' },
+      ],
+    }
+    const completedMatchDetail = {
+      ...sampleMatchDetail,
+      status: 'COMPLETED',
+      winnerAgentId: 'aaaa-1111',
+      judgements: [],
+    }
+
+    setupFetch(completedLiveStatus, completedMatchDetail)
+
+    render(<LiveBattleArenaPage params={paramsPromise} />)
+
+    // Wait for countdown to appear
+    await waitFor(() => {
+      expect(screen.getByTestId('redirect-countdown')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('redirect-countdown')).toHaveTextContent(/Redirecting in \d+s/)
+
+    // Advance timers to trigger redirect
+    await act(async () => {
+      vi.advanceTimersByTime(6000)
+    })
+
+    expect(mockRouterPush).toHaveBeenCalledWith('/clawgic/results')
   })
 })

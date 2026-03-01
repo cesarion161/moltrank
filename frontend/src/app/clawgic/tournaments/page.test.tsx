@@ -531,7 +531,7 @@ describe('ClawgicTournamentLobbyPage', () => {
     ).toBeDisabled()
   })
 
-  it('renders disabled button and Locked badge when backend says tournament is not open', async () => {
+  it('renders Starting Soon badge and Watch Live button when tournament is LOCKED', async () => {
     const lockedTournament = [
       {
         ...tournamentsFixture[0],
@@ -553,9 +553,14 @@ describe('ClawgicTournamentLobbyPage', () => {
     render(<ClawgicTournamentLobbyPage />)
     await screen.findByText('Debate on deterministic mocks')
 
-    expect(screen.getByText('Locked')).toBeInTheDocument()
+    expect(screen.getByText('Starting Soon')).toBeInTheDocument()
     expect(screen.getByText('Tournament is locked and no longer accepting entries.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Enter Tournament' })).toBeDisabled()
+    expect(screen.getByRole('link', { name: /Watch Live/i })).toHaveAttribute(
+      'href',
+      `/clawgic/tournaments/${tournamentsFixture[0].tournamentId}/live`
+    )
+    // Entry controls should be hidden for LOCKED tournaments
+    expect(screen.queryByRole('button', { name: 'Enter Tournament' })).not.toBeInTheDocument()
   })
 
   it('renders disabled button and Full badge when backend says capacity is reached', async () => {
@@ -883,5 +888,81 @@ describe('ClawgicTournamentLobbyPage', () => {
     await waitFor(() => expect(screen.getByText('Full')).toBeInTheDocument())
     expect(screen.getByText('Entries: 4/4')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Enter Tournament' })).toBeDisabled()
+  })
+
+  it('renders Live Now badge with pulsing indicator and Watch Live button for IN_PROGRESS tournament', async () => {
+    const inProgressTournament = [
+      {
+        ...tournamentsFixture[0],
+        status: 'IN_PROGRESS',
+        canEnter: false,
+        entryState: 'TOURNAMENT_NOT_OPEN',
+        entryStateReason: 'Tournament is in progress.',
+      },
+    ]
+
+    mockFetch
+      .mockResolvedValueOnce(
+        mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: inProgressTournament })
+      )
+      .mockResolvedValueOnce(
+        mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: agentsFixture })
+      )
+
+    render(<ClawgicTournamentLobbyPage />)
+    await screen.findByText('Debate on deterministic mocks')
+
+    expect(screen.getByText('Live Now')).toBeInTheDocument()
+    // Pulsing indicator inside the badge
+    const badge = screen.getByText('Live Now').closest('span')
+    expect(badge?.querySelector('.animate-pulse')).toBeInTheDocument()
+    // Watch Live button present
+    const watchLiveLink = screen.getByRole('link', { name: /Watch Live/i })
+    expect(watchLiveLink).toHaveAttribute(
+      'href',
+      `/clawgic/tournaments/${tournamentsFixture[0].tournamentId}/live`
+    )
+    // Entry controls hidden for IN_PROGRESS
+    expect(screen.queryByRole('button', { name: 'Enter Tournament' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('combobox', { name: /Select agent/i })
+    ).not.toBeInTheDocument()
+  })
+
+  it('renders Completed badge and View Results link for COMPLETED tournament', async () => {
+    const completedTournament = [
+      {
+        ...tournamentsFixture[0],
+        status: 'COMPLETED',
+        canEnter: false,
+        entryState: 'TOURNAMENT_NOT_OPEN',
+        entryStateReason: 'Tournament is completed.',
+      },
+    ]
+
+    mockFetch
+      .mockResolvedValueOnce(
+        mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: completedTournament })
+      )
+      .mockResolvedValueOnce(
+        mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: agentsFixture })
+      )
+
+    render(<ClawgicTournamentLobbyPage />)
+    await screen.findByText('Debate on deterministic mocks')
+
+    expect(screen.getByText('Completed')).toBeInTheDocument()
+    // View Results link present
+    expect(screen.getByRole('link', { name: 'View Results' })).toHaveAttribute(
+      'href',
+      '/clawgic/results'
+    )
+    // Entry controls hidden for COMPLETED
+    expect(screen.queryByRole('button', { name: 'Enter Tournament' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('combobox', { name: /Select agent/i })
+    ).not.toBeInTheDocument()
+    // No Watch Live link
+    expect(screen.queryByRole('link', { name: /Watch Live/i })).not.toBeInTheDocument()
   })
 })

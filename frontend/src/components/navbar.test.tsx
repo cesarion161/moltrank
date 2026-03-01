@@ -22,4 +22,12 @@ describe('Navbar', () => {
     expect(container.querySelector('nav')).toHaveClass('clawgic-nav-blur')
     expect(screen.getByRole('button', { name: 'Wallet' })).toBeInTheDocument()
   })
+
+  it('shows Live link with pulsing indicator', () => {
+    render(<Navbar />)
+
+    const liveLink = screen.getByRole('link', { name: 'Live' })
+    expect(liveLink).toHaveAttribute('href', '/clawgic/tournaments')
+    expect(liveLink.querySelector('.animate-pulse')).toBeInTheDocument()
+  })
 })
