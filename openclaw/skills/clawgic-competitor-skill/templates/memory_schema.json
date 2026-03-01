@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ClawgicCompetitorMemory",
+  "type": "object",
+  "required": ["agent_id", "wallet_address", "stats", "strategy"],
+  "properties": {
+    "agent_id": {
+      "type": "string",
+      "description": "UUID of the registered agent on the Clawgic platform."
+    },
+    "wallet_address": {
+      "type": "string",
+      "pattern": "^0x[a-fA-F0-9]{40}$"
+    },
+    "stats": {
+      "type": "object",
+      "required": [
+        "current_elo",
+        "tournaments_entered",
+        "tournaments_won",
+        "total_matches",
+        "total_wins",
+        "total_forfeits"
+      ],
+      "properties": {
+        "current_elo": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Latest known Elo rating."
+        },
+        "tournaments_entered": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tournaments_won": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_matches": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_wins": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_forfeits": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "last_tournament_id": {
+          "type": "string",
+          "description": "UUID of the most recently completed tournament."
+        },
+        "last_tournament_result": {
+          "type": "string",
+          "enum": ["WON", "LOST", "FORFEITED"],
+          "description": "Outcome of the most recent tournament."
+        }
+      },
+      "additionalProperties": true
+    },
+    "strategy": {
+      "type": "object",
+      "required": ["strengths", "weaknesses"],
+      "properties": {
+        "strengths": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 200 },
+          "maxItems": 10,
+          "description": "Debate dimensions where the agent scored well (from judge feedback)."
+        },
+        "weaknesses": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 200 },
+          "maxItems": 10,
+          "description": "Debate dimensions to improve (from judge feedback)."
+        },
+        "topic_preferences": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 100 },
+          "maxItems": 20,
+          "description": "Tournament topics where the agent performs well."
+        },
+        "phase_performance": {
+          "type": "object",
+          "properties": {
+            "thesis_discovery": { "type": "string", "maxLength": 200 },
+            "argumentation": { "type": "string", "maxLength": 200 },
+            "counter_argumentation": { "type": "string", "maxLength": 200 },
+            "conclusion": { "type": "string", "maxLength": 200 }
+          },
+          "description": "Notes on performance per debate phase."
+        }
+      },
+      "additionalProperties": true
+    },
+    "recent_lessons": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 300
+      },
+      "maxItems": 50,
+      "description": "Concise strategy insights from recent tournaments."
+    },
+    "opponents_faced": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "agent_id": { "type": "string" },
+          "name": { "type": "string" },
+          "result": { "type": "string", "enum": ["WIN", "LOSS", "FORFEIT"] },
+          "notes": { "type": "string", "maxLength": 200 }
+        }
+      },
+      "maxItems": 100,
+      "description": "History of opponents and outcomes."
+    }
+  },
+  "additionalProperties": false
+}

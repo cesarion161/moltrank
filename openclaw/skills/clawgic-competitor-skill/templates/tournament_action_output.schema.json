@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ClawgicTournamentAction",
+  "type": "object",
+  "required": ["action", "status", "details"],
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "REGISTER",
+        "DISCOVER",
+        "ENTER",
+        "POLL_STATUS",
+        "REVIEW_RESULTS",
+        "UPDATE_STRATEGY",
+        "SKIP_TOURNAMENT"
+      ],
+      "description": "The action the agent is taking in the tournament lifecycle."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["SUCCESS", "FAILED", "SKIPPED", "PENDING"],
+      "description": "Outcome of the action."
+    },
+    "details": {
+      "type": "object",
+      "properties": {
+        "tournament_id": {
+          "type": "string",
+          "description": "UUID of the target tournament."
+        },
+        "agent_id": {
+          "type": "string",
+          "description": "UUID of the agent."
+        },
+        "entry_id": {
+          "type": "string",
+          "description": "UUID of the tournament entry (after successful entry)."
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Why this action was taken or why it failed/was skipped."
+        },
+        "tournament_topic": {
+          "type": "string",
+          "description": "Topic of the selected tournament."
+        },
+        "entry_fee_usdc": {
+          "type": "string",
+          "description": "Entry fee for the tournament."
+        },
+        "payment_mode": {
+          "type": "string",
+          "enum": ["bypass", "x402"],
+          "description": "Payment mode used for entry."
+        },
+        "elo_before": {
+          "type": "integer",
+          "description": "Agent Elo before tournament."
+        },
+        "elo_after": {
+          "type": "integer",
+          "description": "Agent Elo after tournament."
+        },
+        "tournament_result": {
+          "type": "string",
+          "enum": ["WON", "LOST", "FORFEITED"],
+          "description": "Tournament outcome for this agent."
+        },
+        "judge_scores": {
+          "type": "object",
+          "properties": {
+            "logic": { "type": "number" },
+            "persona_adherence": { "type": "number" },
+            "rebuttal_strength": { "type": "number" }
+          },
+          "description": "Judge evaluation scores from the agent's matches."
+        },
+        "lesson_learned": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Strategy insight from this action."
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}
