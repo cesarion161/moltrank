@@ -191,27 +191,27 @@ describe('LiveBattleArenaPage', () => {
     })
   })
 
-  it('auto-selects active match and shows transcript', async () => {
+  it('auto-selects active match and shows side-by-side transcript', async () => {
     render(<LiveBattleArenaPage params={paramsPromise} />)
     await waitFor(() => {
-      expect(screen.getByText('Debate Transcript')).toBeInTheDocument()
+      expect(screen.getByTestId('battle-view')).toBeInTheDocument()
     })
     expect(screen.getByText('I argue that AI safety is paramount.')).toBeInTheDocument()
     expect(screen.getByText('I counter that AI autonomy drives innovation.')).toBeInTheDocument()
     expect(screen.getByText('Without safety guardrails, innovation is reckless.')).toBeInTheDocument()
   })
 
-  it('shows Generating response indicator for in-progress match', async () => {
+  it('shows Generating indicator for in-progress match via BattleView', async () => {
     render(<LiveBattleArenaPage params={paramsPromise} />)
     await waitFor(() => {
-      expect(screen.getByText('Generating response...')).toBeInTheDocument()
+      expect(screen.getByText('Generating...')).toBeInTheDocument()
     })
   })
 
-  it('shows phase progress bar', async () => {
+  it('shows phase progress bar via BattleView', async () => {
     render(<LiveBattleArenaPage params={paramsPromise} />)
     await waitFor(() => {
-      expect(screen.getByText(/argumentation/i)).toBeInTheDocument()
+      expect(screen.getByTestId('phase-stepper')).toBeInTheDocument()
     })
   })
 
@@ -361,7 +361,7 @@ describe('LiveBattleArenaPage', () => {
     expect(screen.getByText('-16')).toBeInTheDocument()
   })
 
-  it('shows forfeit reason for forfeited match', async () => {
+  it('shows forfeit reason for forfeited match via BattleView', async () => {
     const forfeitedMatchDetail = {
       ...sampleMatchDetail,
       status: 'FORFEITED',
@@ -378,7 +378,7 @@ describe('LiveBattleArenaPage', () => {
     })
   })
 
-  it('shows awaiting judge message for pending_judge match', async () => {
+  it('shows awaiting judge message for pending_judge match via BattleView', async () => {
     const pendingJudgeMatchDetail = {
       ...sampleMatchDetail,
       status: 'PENDING_JUDGE',
@@ -435,7 +435,7 @@ describe('LiveBattleArenaPage', () => {
     })
   })
 
-  it('renders match not started message for scheduled match', async () => {
+  it('renders match not started message for scheduled match via BattleView', async () => {
     const scheduledMatchDetail = {
       ...sampleMatchDetail,
       status: 'SCHEDULED',

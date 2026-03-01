@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiClient } from '@/lib/api-client'
 import CountdownTimer from '@/components/countdown-timer'
+import BattleView from '@/components/battle-view'
 
 type BracketMatchStatus = {
   matchId: string
@@ -28,12 +29,6 @@ type TournamentLiveStatus = {
   matchesCompleted: number | null
   matchesForfeited: number | null
   bracket: BracketMatchStatus[]
-}
-
-type TranscriptMessage = {
-  role: string
-  phase: string
-  content: string
 }
 
 type MatchJudgement = {
@@ -126,36 +121,9 @@ function formatPhase(phase: string | null): string {
   return phase.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-function formatRole(role: string): string {
-  switch (role) {
-    case 'agent_1':
-      return 'Agent 1'
-    case 'agent_2':
-      return 'Agent 2'
-    default:
-      return role
-  }
-}
-
 function shortId(value?: string | null): string {
   if (!value) return 'TBD'
   return `${value.slice(0, 8)}...`
-}
-
-function parseTranscriptMessages(value: unknown): TranscriptMessage[] {
-  if (!Array.isArray(value)) return []
-  return value.flatMap((item) => {
-    if (!item || typeof item !== 'object') return []
-    const candidate = item as Record<string, unknown>
-    if (
-      typeof candidate.role !== 'string' ||
-      typeof candidate.phase !== 'string' ||
-      typeof candidate.content !== 'string'
-    ) {
-      return []
-    }
-    return [{ role: candidate.role, phase: candidate.phase, content: candidate.content }]
-  })
 }
 
 function roundLabel(round: number | null): string {
@@ -309,6 +277,26 @@ export default function LiveBattleArenaPage({
     }
   }, [liveStatus?.activeMatchId])
 
+  const agent1Info = useMemo(() => {
+    if (!matchDetail?.agent1Id) return { name: 'TBD', providerType: 'MOCK', elo: null }
+    const agent = agents.find((a) => a.agentId === matchDetail.agent1Id)
+    return {
+      name: agent?.name ?? shortId(matchDetail.agent1Id),
+      providerType: agent?.providerType ?? 'MOCK',
+      elo: matchDetail.agent1EloBefore,
+    }
+  }, [matchDetail, agents])
+
+  const agent2Info = useMemo(() => {
+    if (!matchDetail?.agent2Id) return { name: 'TBD', providerType: 'MOCK', elo: null }
+    const agent = agents.find((a) => a.agentId === matchDetail.agent2Id)
+    return {
+      name: agent?.name ?? shortId(matchDetail.agent2Id),
+      providerType: agent?.providerType ?? 'MOCK',
+      elo: matchDetail.agent2EloBefore,
+    }
+  }, [matchDetail, agents])
+
   if (!tournamentId || loading) {
     return (
       <div className="clawgic-surface mx-auto max-w-6xl p-8">
@@ -344,7 +332,6 @@ export default function LiveBattleArenaPage({
   const isCompleted = liveStatus.status === 'COMPLETED'
   const semifinals = liveStatus.bracket.filter((m) => m.bracketRound === 1)
   const finalMatch = liveStatus.bracket.find((m) => m.bracketRound === 2)
-  const transcriptMessages = matchDetail ? parseTranscriptMessages(matchDetail.transcriptJson) : []
   const acceptedJudgement = matchDetail?.judgements?.find((j) => j.status === 'ACCEPTED')
 
   return (
@@ -460,54 +447,10 @@ export default function LiveBattleArenaPage({
             </div>
           </div>
 
-          {/* Phase Progress */}
-          {matchDetail.status === 'IN_PROGRESS' || matchDetail.status === 'PENDING_JUDGE' || matchDetail.status === 'COMPLETED' ? (
-            <div className="mt-4">
-              <div className="flex items-center gap-1">
-                {DEBATE_PHASES.map((p, i) => {
-                  const currentIdx = matchDetail.phase ? DEBATE_PHASES.indexOf(matchDetail.phase) : -1
-                  const isDone = i < currentIdx || matchDetail.status === 'COMPLETED' || matchDetail.status === 'PENDING_JUDGE'
-                  const isCurrent = i === currentIdx && matchDetail.status === 'IN_PROGRESS'
-                  return (
-                    <div key={p} className="flex flex-1 flex-col items-center gap-1">
-                      <div
-                        className={`h-2 w-full rounded-full transition-colors ${
-                          isDone
-                            ? 'bg-emerald-500'
-                            : isCurrent
-                              ? 'bg-primary animate-pulse'
-                              : 'bg-slate-200'
-                        }`}
-                      />
-                      <span className="text-[10px] text-muted-foreground hidden sm:block">{formatPhase(p)}</span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          ) : null}
-
-          {/* Forfeit Info */}
-          {matchDetail.status === 'FORFEITED' && matchDetail.forfeitReason ? (
-            <div className="mt-4 rounded-xl border border-red-400/30 bg-red-50 px-3 py-2 text-sm text-red-800">
-              Forfeited: {matchDetail.forfeitReason}
-            </div>
-          ) : null}
-
-          {/* Pending Judge Overlay */}
-          {matchDetail.status === 'PENDING_JUDGE' ? (
-            <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-50 px-3 py-2 text-sm text-amber-800 flex items-center gap-2">
-              <span className="inline-block h-3 w-3 rounded-full border-2 border-amber-500 border-t-transparent animate-spin" />
-              Awaiting judge verdict...
-            </div>
-          ) : null}
-
-          {/* Winner Announcement */}
-          {matchDetail.status === 'COMPLETED' && matchDetail.winnerAgentId ? (
-            <div className="mt-4 rounded-xl border border-emerald-400/30 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 font-semibold">
-              Winner: {resolveAgentName(matchDetail.winnerAgentId)}
-            </div>
-          ) : null}
+          {/* Battle View */}
+          <div className="mt-4">
+            <BattleView matchDetail={matchDetail} agent1Info={agent1Info} agent2Info={agent2Info} />
+          </div>
 
           {/* Judge Scores */}
           {acceptedJudgement ? (
@@ -546,62 +489,6 @@ export default function LiveBattleArenaPage({
               ) : null}
             </div>
           ) : null}
-
-          {/* Transcript */}
-          <div className="mt-4 rounded-2xl border border-border/70 bg-background/75 p-4">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Debate Transcript
-              {matchDetailLoading ? (
-                <span className="ml-2 inline-block h-2 w-2 rounded-full bg-primary animate-pulse" />
-              ) : null}
-            </h3>
-            {transcriptMessages.length === 0 ? (
-              <p className="mt-2 text-sm text-muted-foreground">
-                {matchDetail.status === 'SCHEDULED' ? 'Match has not started yet.' : 'No transcript turns captured yet.'}
-              </p>
-            ) : (
-              <div className="mt-3 space-y-3">
-                {transcriptMessages.map((msg, idx) => (
-                  <div
-                    key={`${matchDetail.matchId}-${idx}`}
-                    className={`rounded-xl border px-3 py-3 text-sm ${
-                      msg.role === 'agent_1'
-                        ? 'border-primary/35 bg-primary/5'
-                        : msg.role === 'agent_2'
-                          ? 'border-blue-400/35 bg-blue-50/50'
-                          : 'border-border/70 bg-background'
-                    }`}
-                  >
-                    <p className="font-medium">
-                      <span
-                        className={
-                          msg.role === 'agent_1'
-                            ? 'text-primary'
-                            : msg.role === 'agent_2'
-                              ? 'text-blue-700'
-                              : 'text-foreground'
-                        }
-                      >
-                        {msg.role === 'agent_1'
-                          ? resolveAgentName(matchDetail.agent1Id)
-                          : msg.role === 'agent_2'
-                            ? resolveAgentName(matchDetail.agent2Id)
-                            : formatRole(msg.role)}
-                      </span>
-                      <span className="ml-2 text-xs text-muted-foreground">{formatPhase(msg.phase)}</span>
-                    </p>
-                    <p className="mt-2 whitespace-pre-wrap text-muted-foreground">{msg.content}</p>
-                  </div>
-                ))}
-                {matchDetail.status === 'IN_PROGRESS' ? (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse" />
-                    Generating response...
-                  </div>
-                ) : null}
-              </div>
-            )}
-          </div>
 
           {/* Elo Snapshots */}
           {matchDetail.agent1EloBefore != null && matchDetail.agent1EloAfter != null &&
