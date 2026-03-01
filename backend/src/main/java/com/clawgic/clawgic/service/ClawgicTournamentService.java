@@ -31,6 +31,7 @@ import com.clawgic.clawgic.repository.ClawgicTournamentEntryRepository;
 import com.clawgic.clawgic.repository.ClawgicTournamentRepository;
 import com.clawgic.clawgic.web.TournamentEntryConflictException;
 import com.clawgic.clawgic.web.X402PaymentRequestException;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Sort;
@@ -50,6 +51,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class ClawgicTournamentService {
 
     private static final int DEFAULT_ELO = 1000;
@@ -68,36 +70,6 @@ public class ClawgicTournamentService {
     private final ClawgicRuntimeProperties clawgicRuntimeProperties;
     private final X402Properties x402Properties;
     private final X402PaymentAuthorizationAttemptService x402PaymentAuthorizationAttemptService;
-
-    public ClawgicTournamentService(
-            ClawgicAgentRepository clawgicAgentRepository,
-            ClawgicAgentEloRepository clawgicAgentEloRepository,
-            ClawgicMatchRepository clawgicMatchRepository,
-            ClawgicMatchJudgementRepository clawgicMatchJudgementRepository,
-            ClawgicTournamentRepository clawgicTournamentRepository,
-            ClawgicTournamentEntryRepository clawgicTournamentEntryRepository,
-            ClawgicPaymentAuthorizationRepository clawgicPaymentAuthorizationRepository,
-            ClawgicStakingLedgerRepository clawgicStakingLedgerRepository,
-            ClawgicTournamentBracketBuilder clawgicTournamentBracketBuilder,
-            ClawgicResponseMapper clawgicResponseMapper,
-            ClawgicRuntimeProperties clawgicRuntimeProperties,
-            X402Properties x402Properties,
-            X402PaymentAuthorizationAttemptService x402PaymentAuthorizationAttemptService
-    ) {
-        this.clawgicAgentRepository = clawgicAgentRepository;
-        this.clawgicAgentEloRepository = clawgicAgentEloRepository;
-        this.clawgicMatchRepository = clawgicMatchRepository;
-        this.clawgicMatchJudgementRepository = clawgicMatchJudgementRepository;
-        this.clawgicTournamentRepository = clawgicTournamentRepository;
-        this.clawgicTournamentEntryRepository = clawgicTournamentEntryRepository;
-        this.clawgicPaymentAuthorizationRepository = clawgicPaymentAuthorizationRepository;
-        this.clawgicStakingLedgerRepository = clawgicStakingLedgerRepository;
-        this.clawgicTournamentBracketBuilder = clawgicTournamentBracketBuilder;
-        this.clawgicResponseMapper = clawgicResponseMapper;
-        this.clawgicRuntimeProperties = clawgicRuntimeProperties;
-        this.x402Properties = x402Properties;
-        this.x402PaymentAuthorizationAttemptService = x402PaymentAuthorizationAttemptService;
-    }
 
     @Transactional
     public ClawgicTournamentResponses.TournamentDetail createTournament(

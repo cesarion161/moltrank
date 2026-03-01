@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiRequestError, apiClient } from '@/lib/api-client'
 
 type ClawgicAgentSummary = {
@@ -47,6 +47,8 @@ const PROVIDER_TYPES = ['OPENAI', 'ANTHROPIC', 'MOCK'] as const
 type ProviderType = (typeof PROVIDER_TYPES)[number]
 
 const EVM_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/
+export const AGENTS_MD_MAX_LENGTH = 50000
+const AGENTS_MD_MAX_FILE_BYTES = 512 * 1024 // 512 KB file size cap
 
 type AgentFormState = {
   walletAddress: string
@@ -117,6 +119,10 @@ export function validateAgentForm(form: AgentFormState): AgentFormErrors {
 
   if (form.providerKeyRef.trim().length > 255) {
     errors.providerKeyRef = 'Model reference must be at most 255 characters.'
+  }
+
+  if (form.agentsMdSource.length > AGENTS_MD_MAX_LENGTH) {
+    errors.agentsMdSource = `AGENTS.md content must be at most ${AGENTS_MD_MAX_LENGTH.toLocaleString()} characters. Current: ${form.agentsMdSource.length.toLocaleString()}.`
   }
 
   return errors
@@ -252,6 +258,8 @@ export default function ClawgicAgentsPage() {
   const [walletFilter, setWalletFilter] = useState('')
   const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [fileImportError, setFileImportError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const refreshAgents = useCallback(async (filterWallet?: string) => {
     const endpoint = filterWallet?.trim()
@@ -395,6 +403,39 @@ export default function ClawgicAgentsPage() {
     } finally {
       setRefreshing(false)
     }
+  }
+
+  function handleFileImport(event: React.ChangeEvent<HTMLInputElement>) {
+    setFileImportError(null)
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (file.size > AGENTS_MD_MAX_FILE_BYTES) {
+      setFileImportError(`File is too large (${(file.size / 1024).toFixed(0)} KB). Maximum file size is 512 KB.`)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      const content = reader.result
+      if (typeof content === 'string') {
+        updateField('agentsMdSource', content)
+      } else {
+        setFileImportError('Could not read file as text. Try a .md or .txt file.')
+      }
+    }
+    reader.onerror = () => {
+      setFileImportError('Failed to read file. Try again or paste content manually.')
+    }
+    reader.readAsText(file)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  function handleClearAgentsMd() {
+    updateField('agentsMdSource', '')
+    setFileImportError(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   if (loading) {
@@ -669,18 +710,60 @@ export default function ClawgicAgentsPage() {
             </label>
 
             {/* AGENTS.md Source */}
-            <label className="grid gap-1.5 text-sm">
+            <div className="grid gap-1.5 text-sm">
               <span className="font-medium">AGENTS.md Source</span>
               <textarea
                 value={form.agentsMdSource}
                 onChange={(e) => updateField('agentsMdSource', e.target.value)}
-                placeholder="Paste your AGENTS.md content here..."
+                placeholder="Paste your AGENTS.md content here or import a file..."
                 rows={4}
                 className="clawgic-select resize-y"
                 aria-label="AGENTS.md source"
               />
-              <span className="text-xs text-muted-foreground">Full AGENTS.md text defining agent configuration.</span>
-            </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".md,.txt,.markdown"
+                  className="hidden"
+                  aria-label="Import AGENTS.md file"
+                  onChange={handleFileImport}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="clawgic-outline-btn text-xs"
+                >
+                  Import File
+                </button>
+                {form.agentsMdSource ? (
+                  <button
+                    type="button"
+                    onClick={handleClearAgentsMd}
+                    className="clawgic-outline-btn text-xs"
+                  >
+                    Clear
+                  </button>
+                ) : null}
+                <span className={`ml-auto text-xs ${form.agentsMdSource.length > AGENTS_MD_MAX_LENGTH ? 'font-medium text-red-600' : 'text-muted-foreground'}`}>
+                  {form.agentsMdSource.length.toLocaleString()}/{AGENTS_MD_MAX_LENGTH.toLocaleString()}
+                </span>
+              </div>
+              {form.agentsMdSource.length > AGENTS_MD_MAX_LENGTH ? (
+                <p className="text-xs font-medium text-amber-700" role="status">
+                  Content exceeds the {AGENTS_MD_MAX_LENGTH.toLocaleString()} character limit and will be rejected on submit. Trim or replace the content.
+                </p>
+              ) : null}
+              {fileImportError ? (
+                <p className="text-xs text-red-600" role="alert">{fileImportError}</p>
+              ) : null}
+              <span className="text-xs text-muted-foreground">
+                Full AGENTS.md text defining agent configuration. Paste or import a .md/.txt file (max 512 KB).
+              </span>
+              {formErrors.agentsMdSource ? (
+                <span className="text-xs text-red-600" role="alert">{formErrors.agentsMdSource}</span>
+              ) : null}
+            </div>
 
             {/* Submit */}
             <div className="flex gap-3 pt-2">

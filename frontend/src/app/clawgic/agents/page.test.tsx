@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import ClawgicAgentsPage, { buildAgentPayload, validateAgentForm } from './page'
+import ClawgicAgentsPage, { AGENTS_MD_MAX_LENGTH, buildAgentPayload, validateAgentForm } from './page'
 
 const mockFetch = vi.fn()
 
@@ -943,6 +943,220 @@ describe('ClawgicAgentsPage', () => {
     expect(postedBody.agentsMdSource).toBeUndefined()
   })
 
+  // --- AGENTS.md Ingestion UX Tests ---
+
+  it('renders Import File button and hidden file input for AGENTS.md', async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: [] })
+    )
+
+    render(<ClawgicAgentsPage />)
+    await screen.findByText(/No agents found/)
+    fireEvent.click(screen.getByRole('button', { name: 'Create Agent' }))
+
+    expect(screen.getByRole('button', { name: 'Import File' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Import AGENTS.md file')).toBeInTheDocument()
+  })
+
+  it('imports .md file content into AGENTS.md textarea', async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: [] })
+    )
+
+    render(<ClawgicAgentsPage />)
+    await screen.findByText(/No agents found/)
+    fireEvent.click(screen.getByRole('button', { name: 'Create Agent' }))
+
+    const fileContent = '# My Agent\n\nSystem: Analytical debater with formal logic skills.'
+    const file = new File([fileContent], 'AGENTS.md', { type: 'text/markdown' })
+
+    const fileInput = screen.getByLabelText('Import AGENTS.md file')
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    // FileReader is async — wait for textarea to be updated
+    await waitFor(() => {
+      expect(screen.getByLabelText('AGENTS.md source')).toHaveValue(fileContent)
+    })
+  })
+
+  it('replaces existing AGENTS.md content when importing a new file', async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: [] })
+    )
+
+    render(<ClawgicAgentsPage />)
+    await screen.findByText(/No agents found/)
+    fireEvent.click(screen.getByRole('button', { name: 'Create Agent' }))
+
+    // First, type some content manually
+    fireEvent.change(screen.getByLabelText('AGENTS.md source'), {
+      target: { value: 'Old content' },
+    })
+    expect(screen.getByLabelText('AGENTS.md source')).toHaveValue('Old content')
+
+    // Now import a file — it should replace the old content
+    const newContent = '# Replaced Agent Config'
+    const file = new File([newContent], 'new-agent.md', { type: 'text/markdown' })
+    const fileInput = screen.getByLabelText('Import AGENTS.md file')
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('AGENTS.md source')).toHaveValue(newContent)
+    })
+  })
+
+  it('shows Clear button when AGENTS.md has content and clears it on click', async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: [] })
+    )
+
+    render(<ClawgicAgentsPage />)
+    await screen.findByText(/No agents found/)
+    fireEvent.click(screen.getByRole('button', { name: 'Create Agent' }))
+
+    // No Clear button when empty
+    expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument()
+
+    // Add content
+    fireEvent.change(screen.getByLabelText('AGENTS.md source'), {
+      target: { value: '# Some config' },
+    })
+
+    // Clear button should appear
+    const clearBtn = screen.getByRole('button', { name: 'Clear' })
+    expect(clearBtn).toBeInTheDocument()
+
+    // Click clear
+    fireEvent.click(clearBtn)
+    expect(screen.getByLabelText('AGENTS.md source')).toHaveValue('')
+    // Clear button should disappear
+    expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument()
+  })
+
+  it('shows character counter for AGENTS.md field', async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: [] })
+    )
+
+    render(<ClawgicAgentsPage />)
+    await screen.findByText(/No agents found/)
+    fireEvent.click(screen.getByRole('button', { name: 'Create Agent' }))
+
+    // Counter shows 0/50,000
+    expect(screen.getByText('0/50,000')).toBeInTheDocument()
+
+    // Type some content
+    fireEvent.change(screen.getByLabelText('AGENTS.md source'), {
+      target: { value: 'Hello world' },
+    })
+
+    expect(screen.getByText('11/50,000')).toBeInTheDocument()
+  })
+
+  it('shows truncation warning when AGENTS.md exceeds limit', async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: [] })
+    )
+
+    render(<ClawgicAgentsPage />)
+    await screen.findByText(/No agents found/)
+    fireEvent.click(screen.getByRole('button', { name: 'Create Agent' }))
+
+    // Set content exceeding limit
+    const oversized = 'X'.repeat(AGENTS_MD_MAX_LENGTH + 1)
+    fireEvent.change(screen.getByLabelText('AGENTS.md source'), {
+      target: { value: oversized },
+    })
+
+    expect(screen.getByRole('status')).toHaveTextContent(/exceeds the 50,000 character limit/)
+  })
+
+  it('rejects oversized file on import', async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: [] })
+    )
+
+    render(<ClawgicAgentsPage />)
+    await screen.findByText(/No agents found/)
+    fireEvent.click(screen.getByRole('button', { name: 'Create Agent' }))
+
+    // Create a file that exceeds 512 KB
+    const bigContent = 'X'.repeat(513 * 1024)
+    const bigFile = new File([bigContent], 'big-agents.md', { type: 'text/markdown' })
+
+    const fileInput = screen.getByLabelText('Import AGENTS.md file')
+    fireEvent.change(fileInput, { target: { files: [bigFile] } })
+
+    expect(await screen.findByText(/File is too large/)).toBeInTheDocument()
+    expect(screen.getByText(/Maximum file size is 512 KB/)).toBeInTheDocument()
+    // Textarea should remain empty (content not loaded)
+    expect(screen.getByLabelText('AGENTS.md source')).toHaveValue('')
+  })
+
+  it('preserves imported content exactly in agentsMdSource payload (no mutation)', async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: [] })
+    )
+
+    render(<ClawgicAgentsPage />)
+    await screen.findByText(/No agents found/)
+    fireEvent.click(screen.getByRole('button', { name: 'Create Agent' }))
+
+    const rawContent = '  # Agent Config  \n  with leading/trailing spaces  \n'
+    const file = new File([rawContent], 'AGENTS.md', { type: 'text/markdown' })
+    const fileInput = screen.getByLabelText('Import AGENTS.md file')
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    await waitFor(() => {
+      // Content loaded exactly as-is (no trimming in textarea)
+      expect(screen.getByLabelText('AGENTS.md source')).toHaveValue(rawContent)
+    })
+
+    // Fill required fields
+    fireEvent.change(screen.getByLabelText('Wallet address'), {
+      target: { value: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+    })
+    fireEvent.change(screen.getByLabelText('Agent name'), { target: { value: 'Exact Agent' } })
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-test' } })
+    fireEvent.change(screen.getByLabelText('System prompt'), { target: { value: 'prompt' } })
+
+    // Mock create + refresh
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({
+        ok: true,
+        status: 201,
+        statusText: 'Created',
+        jsonBody: {
+          agentId: 'exact-id',
+          walletAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          name: 'Exact Agent',
+          avatarUrl: null,
+          providerType: 'OPENAI',
+          providerKeyRef: null,
+          persona: null,
+          apiKeyConfigured: true,
+          createdAt: '2026-03-01T10:00:00Z',
+          updatedAt: '2026-03-01T10:00:00Z',
+        },
+      })
+    )
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: [] })
+    )
+
+    // Submit
+    const submitBtns = screen.getAllByRole('button', { name: 'Create Agent' })
+    const formSubmitBtn = submitBtns.find((btn) => btn.closest('section')?.querySelector('h2'))!
+    fireEvent.click(formSubmitBtn)
+
+    await screen.findByText(/Exact Agent.*created successfully/)
+
+    // Verify the POST call included the trimmed content (buildAgentPayload trims)
+    const postCall = mockFetch.mock.calls[1]
+    const postedBody = JSON.parse(postCall[1].body)
+    expect(postedBody.agentsMdSource).toBe(rawContent.trim())
+  })
+
   it('shows provider type selector with all options', async () => {
     mockFetch.mockResolvedValueOnce(
       mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: [] })
@@ -1031,6 +1245,16 @@ describe('validateAgentForm', () => {
   it('accepts valid avatar URL', () => {
     const errors = validateAgentForm({ ...validForm, avatarUrl: 'https://example.com/avatar.png' })
     expect(errors.avatarUrl).toBeUndefined()
+  })
+
+  it('returns error for agentsMdSource exceeding 50000 chars', () => {
+    const errors = validateAgentForm({ ...validForm, agentsMdSource: 'X'.repeat(50001) })
+    expect(errors.agentsMdSource).toContain('50,000 characters')
+  })
+
+  it('accepts agentsMdSource at exactly 50000 chars', () => {
+    const errors = validateAgentForm({ ...validForm, agentsMdSource: 'X'.repeat(50000) })
+    expect(errors.agentsMdSource).toBeUndefined()
   })
 })
 

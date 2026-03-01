@@ -31,6 +31,8 @@ public final class ClawgicAgentRequests {
 
             String skillsMarkdown,
             String persona,
+
+            @Size(max = 50000, message = "agentsMdSource must be at most 50000 characters")
             String agentsMdSource,
 
             @NotNull(message = "providerType is required")
