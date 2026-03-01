@@ -622,6 +622,10 @@ run_match_endpoint_checks() {
       "/api/clawgic/tournaments/${SMOKE_TOURNAMENT_ID}/matches" \
       "200" \
       ""
+    if [[ "${LAST_REQUEST_MATCHED_EXPECTED}" == "true" ]]; then
+      # Verify matches list is a JSON array
+      assert_body_contains "tournament-matches-list-is-array" '['
+    fi
   fi
 
   # GET /api/clawgic/tournaments/{tournamentId}/matches — not found for unknown tournament
@@ -639,6 +643,44 @@ run_match_endpoint_checks() {
     if [[ "${LAST_REQUEST_MATCHED_EXPECTED}" == "true" ]]; then
       assert_body_contains "tournament-live-has-server-time" '"serverTime"'
       assert_body_contains "tournament-live-has-bracket" '"bracket"'
+      assert_body_contains "tournament-live-has-tournament-id" '"tournamentId"'
+      assert_body_contains "tournament-live-has-status" '"status"'
+      assert_body_contains "tournament-live-has-start-time" '"startTime"'
+      assert_body_contains "tournament-live-has-entry-close-time" '"entryCloseTime"'
+      assert_body_contains "tournament-live-has-matches-completed" '"matchesCompleted"'
+
+      # Verify tournament ID matches the queried ID
+      local live_tournament_id
+      live_tournament_id="$(response_json_get 'tournamentId')"
+      if [[ "${live_tournament_id}" == "${SMOKE_TOURNAMENT_ID}" ]]; then
+        record_pass "tournament-live-tournament-id-matches"
+      else
+        record_fail "tournament-live-tournament-id-matches" \
+          "expected tournamentId=${SMOKE_TOURNAMENT_ID}, got ${live_tournament_id}"
+      fi
+
+      # Verify status is a valid tournament status
+      local live_status
+      live_status="$(response_json_get 'status')"
+      case "${live_status}" in
+        SCHEDULED|LOCKED|IN_PROGRESS|COMPLETED)
+          record_pass "tournament-live-status-valid"
+          ;;
+        *)
+          record_fail "tournament-live-status-valid" \
+            "unexpected status: ${live_status}"
+          ;;
+      esac
+
+      # Verify bracket is an array (may be empty for SCHEDULED)
+      local bracket_len
+      bracket_len="$(response_json_len 'bracket')"
+      if [[ "${bracket_len}" =~ ^[0-9]+$ ]]; then
+        record_pass "tournament-live-bracket-is-array"
+      else
+        record_fail "tournament-live-bracket-is-array" \
+          "bracket is not an array or parse error: ${bracket_len}"
+      fi
     fi
   fi
 
@@ -647,6 +689,51 @@ run_match_endpoint_checks() {
     "/api/clawgic/tournaments/${UNKNOWN_UUID}/live" \
     "404" \
     ""
+
+  # GET /api/clawgic/matches/{matchId} — detail for existing match (if bracket was created)
+  if [[ -n "${SMOKE_TOURNAMENT_ID}" ]]; then
+    # Fetch matches list to get a real match ID
+    assert_request "match-fetch-for-detail-check" "GET" \
+      "/api/clawgic/tournaments/${SMOKE_TOURNAMENT_ID}/matches" \
+      "200" \
+      ""
+    if [[ "${LAST_REQUEST_MATCHED_EXPECTED}" == "true" ]]; then
+      local match_count
+      match_count="$(response_json_len '.')"
+      if [[ "${match_count}" =~ ^[0-9]+$ ]] && [[ "${match_count}" -gt 0 ]]; then
+        local first_match_id
+        first_match_id="$(response_json_get '[0].matchId')"
+        if [[ -n "${first_match_id}" ]] && [[ "${first_match_id}" != "null" ]]; then
+          assert_request "match-detail-existing" "GET" \
+            "/api/clawgic/matches/${first_match_id}" \
+            "200" \
+            ""
+          if [[ "${LAST_REQUEST_MATCHED_EXPECTED}" == "true" ]]; then
+            assert_body_contains "match-detail-has-match-id" '"matchId"'
+            assert_body_contains "match-detail-has-status" '"status"'
+            assert_body_contains "match-detail-has-transcript" '"transcriptJson"'
+            assert_body_contains "match-detail-has-judgements" '"judgements"'
+            assert_body_contains "match-detail-has-bracket-round" '"bracketRound"'
+            assert_body_contains "match-detail-has-agent1" '"agent1Id"'
+            assert_body_contains "match-detail-has-agent2" '"agent2Id"'
+
+            # Verify match status is a valid status
+            local match_status
+            match_status="$(response_json_get 'status')"
+            case "${match_status}" in
+              SCHEDULED|IN_PROGRESS|PENDING_JUDGE|COMPLETED|FORFEITED)
+                record_pass "match-detail-status-valid"
+                ;;
+              *)
+                record_fail "match-detail-status-valid" \
+                  "unexpected match status: ${match_status}"
+                ;;
+            esac
+          fi
+        fi
+      fi
+    fi
+  fi
 }
 
 print_summary_and_exit() {

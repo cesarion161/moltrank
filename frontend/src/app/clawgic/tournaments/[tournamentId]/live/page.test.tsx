@@ -148,6 +148,8 @@ describe('LiveBattleArenaPage', () => {
     setupFetch()
     mockRouterPush.mockReset()
     vi.spyOn(console, 'error').mockImplementation(() => {})
+    // Mock scrollTo for BattleView auto-scroll (not available in jsdom)
+    Element.prototype.scrollTo = vi.fn()
   })
 
   afterEach(() => {
@@ -657,5 +659,343 @@ describe('LiveBattleArenaPage', () => {
     })
 
     expect(mockRouterPush).toHaveBeenCalledWith('/clawgic/results')
+  })
+
+  // --- E2E Lifecycle Simulation Tests (C87) ---
+
+  it('simulates full tournament lifecycle: SF1 in-progress → SF1 judged → SF2 in-progress → SF2 judged → Final in-progress → Final judged → champion', async () => {
+    // Phase 1: SF1 in progress (initial state from default fixtures)
+    render(<LiveBattleArenaPage params={paramsPromise} />)
+    await waitFor(() => {
+      expect(screen.getByText('AI Ethics Debate')).toBeInTheDocument()
+    })
+    // Verify SF1 is active
+    await waitFor(() => {
+      expect(screen.getAllByText('Battling').length).toBeGreaterThan(0)
+    })
+    expect(screen.getByTestId('battle-view')).toBeInTheDocument()
+    expect(screen.getByText('I argue that AI safety is paramount.')).toBeInTheDocument()
+
+    // Phase 2: SF1 completes, judge delivers verdict, SF2 starts
+    const sf1CompletedLiveStatus = {
+      ...sampleLiveStatus,
+      activeMatchId: 'match-sf2',
+      matchesCompleted: 1,
+      bracket: [
+        { ...sampleLiveStatus.bracket[0], status: 'COMPLETED', winnerAgentId: 'aaaa-1111' },
+        { ...sampleLiveStatus.bracket[1], status: 'IN_PROGRESS', phase: 'THESIS_DISCOVERY' },
+        { ...sampleLiveStatus.bracket[2], agent1Id: 'aaaa-1111' },
+      ],
+    }
+    const sf2MatchDetail = {
+      ...sampleMatchDetail,
+      matchId: 'match-sf2',
+      agent1Id: 'aaaa-2222',
+      agent2Id: 'aaaa-3333',
+      bracketPosition: 2,
+      transcriptJson: [
+        { role: 'agent_1', phase: 'THESIS_DISCOVERY', content: 'BetaBot opens with a strong thesis.' },
+      ],
+    }
+
+    setupFetch(sf1CompletedLiveStatus, sf2MatchDetail)
+
+    // Advance polling interval
+    await act(async () => {
+      vi.advanceTimersByTime(3500)
+    })
+
+    // SF1 should now show completed winner in bracket
+    await waitFor(() => {
+      const winnerTexts = screen.getAllByText('Winner: AlphaBot')
+      expect(winnerTexts.length).toBeGreaterThan(0)
+    })
+
+    // Phase 3: SF2 completes, Final starts
+    const sf2CompletedLiveStatus = {
+      ...sampleLiveStatus,
+      activeMatchId: 'match-final',
+      matchesCompleted: 2,
+      bracket: [
+        { ...sampleLiveStatus.bracket[0], status: 'COMPLETED', winnerAgentId: 'aaaa-1111' },
+        { ...sampleLiveStatus.bracket[1], status: 'COMPLETED', winnerAgentId: 'aaaa-2222' },
+        { ...sampleLiveStatus.bracket[2], status: 'IN_PROGRESS', phase: 'ARGUMENTATION', agent1Id: 'aaaa-1111', agent2Id: 'aaaa-2222' },
+      ],
+    }
+    const finalMatchDetail = {
+      ...sampleMatchDetail,
+      matchId: 'match-final',
+      agent1Id: 'aaaa-1111',
+      agent2Id: 'aaaa-2222',
+      bracketRound: 2,
+      bracketPosition: 1,
+      phase: 'ARGUMENTATION',
+      transcriptJson: [
+        { role: 'agent_1', phase: 'THESIS_DISCOVERY', content: 'AlphaBot opens the final.' },
+        { role: 'agent_2', phase: 'THESIS_DISCOVERY', content: 'BetaBot counters in the final.' },
+        { role: 'agent_1', phase: 'ARGUMENTATION', content: 'AlphaBot argues strongly.' },
+      ],
+    }
+
+    setupFetch(sf2CompletedLiveStatus, finalMatchDetail)
+
+    await act(async () => {
+      vi.advanceTimersByTime(3500)
+    })
+
+    // Both semifinals should show completed state in bracket
+    await waitFor(() => {
+      const winnerTexts = screen.getAllByText(/Winner:/)
+      expect(winnerTexts.length).toBeGreaterThanOrEqual(2)
+    })
+
+    // Phase 4: Final completes → tournament champion
+    const tournamentCompletedLiveStatus = {
+      ...sampleLiveStatus,
+      status: 'COMPLETED',
+      activeMatchId: null,
+      tournamentWinnerAgentId: 'aaaa-1111',
+      matchesCompleted: 3,
+      bracket: [
+        { ...sampleLiveStatus.bracket[0], status: 'COMPLETED', winnerAgentId: 'aaaa-1111' },
+        { ...sampleLiveStatus.bracket[1], status: 'COMPLETED', winnerAgentId: 'aaaa-2222' },
+        { ...sampleLiveStatus.bracket[2], status: 'COMPLETED', agent1Id: 'aaaa-1111', agent2Id: 'aaaa-2222', winnerAgentId: 'aaaa-1111' },
+      ],
+    }
+    const completedFinalMatchDetail = {
+      ...finalMatchDetail,
+      status: 'COMPLETED',
+      winnerAgentId: 'aaaa-1111',
+      agent1EloBefore: 1016,
+      agent1EloAfter: 1032,
+      agent2EloBefore: 1016,
+      agent2EloAfter: 1000,
+      judgements: [
+        {
+          judgementId: 'j-final',
+          matchId: 'match-final',
+          judgeKey: 'default',
+          status: 'ACCEPTED',
+          attempt: 1,
+          winnerAgentId: 'aaaa-1111',
+          agent1LogicScore: 9,
+          agent1PersonaAdherenceScore: 8,
+          agent1RebuttalStrengthScore: 9,
+          agent2LogicScore: 7,
+          agent2PersonaAdherenceScore: 8,
+          agent2RebuttalStrengthScore: 6,
+          reasoning: 'AlphaBot dominated the finals.',
+        },
+      ],
+    }
+
+    setupFetch(tournamentCompletedLiveStatus, completedFinalMatchDetail)
+
+    await act(async () => {
+      vi.advanceTimersByTime(3500)
+    })
+
+    // Verify champion announced
+    await waitFor(() => {
+      expect(screen.getByText('Champion: AlphaBot')).toBeInTheDocument()
+    })
+
+    // Verify polling stopped
+    expect(screen.getByText('Polling stopped')).toBeInTheDocument()
+
+    // Verify completed badge
+    expect(screen.getByText('Completed')).toBeInTheDocument()
+
+    // Verify redirect countdown is shown
+    await waitFor(() => {
+      expect(screen.getByTestId('redirect-countdown')).toBeInTheDocument()
+    })
+  })
+
+  it('simulates bracket advancement with forfeit: SF1 forfeited → winner advances to final', async () => {
+    // SF1 is forfeited (timeout), SF2 still SCHEDULED
+    const sf1ForfeitedLiveStatus = {
+      ...sampleLiveStatus,
+      activeMatchId: 'match-sf2',
+      matchesCompleted: 0,
+      matchesForfeited: 1,
+      bracket: [
+        { ...sampleLiveStatus.bracket[0], status: 'FORFEITED', winnerAgentId: 'aaaa-1111' },
+        { ...sampleLiveStatus.bracket[1], status: 'IN_PROGRESS', phase: 'THESIS_DISCOVERY' },
+        { ...sampleLiveStatus.bracket[2], agent1Id: 'aaaa-1111' },
+      ],
+    }
+    const sf2MatchDetail = {
+      ...sampleMatchDetail,
+      matchId: 'match-sf2',
+      agent1Id: 'aaaa-2222',
+      agent2Id: 'aaaa-3333',
+      bracketPosition: 2,
+      transcriptJson: [
+        { role: 'agent_1', phase: 'THESIS_DISCOVERY', content: 'BetaBot presents thesis.' },
+      ],
+    }
+
+    setupFetch(sf1ForfeitedLiveStatus, sf2MatchDetail)
+
+    render(<LiveBattleArenaPage params={paramsPromise} />)
+
+    // Verify SF1 is shown as forfeited in bracket
+    await waitFor(() => {
+      const badges = screen.getAllByTestId('match-status-badge')
+      const forfeitedBadge = badges.find((b) => b.getAttribute('data-status') === 'FORFEITED')
+      expect(forfeitedBadge).toBeInTheDocument()
+    })
+
+    // Winner from forfeit should appear in bracket
+    await waitFor(() => {
+      const winnerTexts = screen.getAllByText('Winner: AlphaBot')
+      expect(winnerTexts.length).toBeGreaterThan(0)
+    })
+  })
+
+  it('simulates polling transition from IN_PROGRESS to PENDING_JUDGE to COMPLETED within a single match', async () => {
+    // Start: Match in progress
+    render(<LiveBattleArenaPage params={paramsPromise} />)
+    await waitFor(() => {
+      expect(screen.getAllByText('Battling').length).toBeGreaterThan(0)
+    })
+
+    // Transition to PENDING_JUDGE
+    const pendingJudgeLiveStatus = {
+      ...sampleLiveStatus,
+      activeMatchId: null,
+      bracket: [
+        { ...sampleLiveStatus.bracket[0], status: 'PENDING_JUDGE', phase: 'CONCLUSION' },
+        sampleLiveStatus.bracket[1],
+        sampleLiveStatus.bracket[2],
+      ],
+    }
+    const pendingJudgeMatchDetail = {
+      ...sampleMatchDetail,
+      status: 'PENDING_JUDGE',
+      phase: 'CONCLUSION',
+      transcriptJson: [
+        { role: 'agent_1', phase: 'THESIS_DISCOVERY', content: 'A1 thesis.' },
+        { role: 'agent_2', phase: 'THESIS_DISCOVERY', content: 'A2 thesis.' },
+        { role: 'agent_1', phase: 'ARGUMENTATION', content: 'A1 argues.' },
+        { role: 'agent_2', phase: 'ARGUMENTATION', content: 'A2 argues.' },
+        { role: 'agent_1', phase: 'COUNTER_ARGUMENTATION', content: 'A1 counters.' },
+        { role: 'agent_2', phase: 'COUNTER_ARGUMENTATION', content: 'A2 counters.' },
+        { role: 'agent_1', phase: 'CONCLUSION', content: 'A1 concludes.' },
+        { role: 'agent_2', phase: 'CONCLUSION', content: 'A2 concludes.' },
+      ],
+    }
+
+    setupFetch(pendingJudgeLiveStatus, pendingJudgeMatchDetail)
+
+    await act(async () => {
+      vi.advanceTimersByTime(3500)
+    })
+
+    // Should show awaiting judge
+    await waitFor(() => {
+      expect(screen.getByText('Awaiting judge verdict...')).toBeInTheDocument()
+    })
+
+    // Transition to COMPLETED with judge verdict
+    const judgedLiveStatus = {
+      ...sampleLiveStatus,
+      activeMatchId: 'match-sf2',
+      matchesCompleted: 1,
+      bracket: [
+        { ...sampleLiveStatus.bracket[0], status: 'COMPLETED', winnerAgentId: 'aaaa-1111' },
+        { ...sampleLiveStatus.bracket[1], status: 'IN_PROGRESS', phase: 'THESIS_DISCOVERY' },
+        { ...sampleLiveStatus.bracket[2], agent1Id: 'aaaa-1111' },
+      ],
+    }
+    const judgedMatchDetail = {
+      ...sampleMatchDetail,
+      status: 'COMPLETED',
+      winnerAgentId: 'aaaa-1111',
+      agent1EloBefore: 1000,
+      agent1EloAfter: 1016,
+      agent2EloBefore: 1000,
+      agent2EloAfter: 984,
+      judgements: [
+        {
+          judgementId: 'j1',
+          matchId: 'match-sf1',
+          judgeKey: 'default',
+          status: 'ACCEPTED',
+          attempt: 1,
+          winnerAgentId: 'aaaa-1111',
+          agent1LogicScore: 8,
+          agent1PersonaAdherenceScore: 7,
+          agent1RebuttalStrengthScore: 9,
+          agent2LogicScore: 6,
+          agent2PersonaAdherenceScore: 7,
+          agent2RebuttalStrengthScore: 5,
+          reasoning: 'AlphaBot had better logic.',
+        },
+      ],
+    }
+
+    setupFetch(judgedLiveStatus, judgedMatchDetail)
+
+    await act(async () => {
+      vi.advanceTimersByTime(3500)
+    })
+
+    // Should show winner and judge scores
+    await waitFor(() => {
+      expect(screen.getAllByText('Winner: AlphaBot').length).toBeGreaterThan(0)
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Judge Scores')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Elo Impact')).toBeInTheDocument()
+    expect(screen.getByText('+16')).toBeInTheDocument()
+    expect(screen.getByText('-16')).toBeInTheDocument()
+  })
+
+  it('simulates transcript growth during polling: new turns appear incrementally', async () => {
+    // Initial: 3 transcript entries
+    render(<LiveBattleArenaPage params={paramsPromise} />)
+    await waitFor(() => {
+      expect(screen.getByText('I argue that AI safety is paramount.')).toBeInTheDocument()
+    })
+    expect(screen.getByText('I counter that AI autonomy drives innovation.')).toBeInTheDocument()
+    expect(screen.getByText('Without safety guardrails, innovation is reckless.')).toBeInTheDocument()
+
+    // Poll returns updated transcript with 2 more turns
+    const updatedMatchDetail = {
+      ...sampleMatchDetail,
+      phase: 'COUNTER_ARGUMENTATION',
+      transcriptJson: [
+        { role: 'agent_1', phase: 'THESIS_DISCOVERY', content: 'I argue that AI safety is paramount.' },
+        { role: 'agent_2', phase: 'THESIS_DISCOVERY', content: 'I counter that AI autonomy drives innovation.' },
+        { role: 'agent_1', phase: 'ARGUMENTATION', content: 'Without safety guardrails, innovation is reckless.' },
+        { role: 'agent_2', phase: 'ARGUMENTATION', content: 'Innovation requires calculated risk-taking.' },
+        { role: 'agent_1', phase: 'COUNTER_ARGUMENTATION', content: 'Risk without safeguards leads to catastrophe.' },
+      ],
+    }
+    const updatedLiveStatus = {
+      ...sampleLiveStatus,
+      bracket: [
+        { ...sampleLiveStatus.bracket[0], phase: 'COUNTER_ARGUMENTATION' },
+        sampleLiveStatus.bracket[1],
+        sampleLiveStatus.bracket[2],
+      ],
+    }
+
+    setupFetch(updatedLiveStatus, updatedMatchDetail)
+
+    await act(async () => {
+      vi.advanceTimersByTime(3500)
+    })
+
+    // New turns should appear
+    await waitFor(() => {
+      expect(screen.getByText('Innovation requires calculated risk-taking.')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Risk without safeguards leads to catastrophe.')).toBeInTheDocument()
+    // Original turns still present
+    expect(screen.getByText('I argue that AI safety is paramount.')).toBeInTheDocument()
   })
 })
