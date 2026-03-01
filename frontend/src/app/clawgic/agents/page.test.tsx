@@ -22,6 +22,7 @@ const agentsFixture = [
     providerType: 'OPENAI',
     providerKeyRef: 'gpt-4o',
     persona: 'A sharp analytical debater focused on formal logic.',
+    apiKeyConfigured: true,
     createdAt: '2026-02-28T10:00:00Z',
     updatedAt: '2026-02-28T10:00:00Z',
   },
@@ -33,10 +34,35 @@ const agentsFixture = [
     providerType: 'ANTHROPIC',
     providerKeyRef: null,
     persona: null,
+    apiKeyConfigured: false,
     createdAt: '2026-02-28T11:00:00Z',
     updatedAt: '2026-02-28T11:00:00Z',
   },
 ]
+
+const agentDetailFixture = {
+  agentId: '00000000-0000-0000-0000-000000000a01',
+  walletAddress: '0x1111111111111111111111111111111111111111',
+  name: 'Logic Falcon',
+  avatarUrl: null,
+  providerType: 'OPENAI',
+  providerKeyRef: 'gpt-4o',
+  systemPrompt: 'You are a skilled debater who specializes in formal logic and analytical reasoning.',
+  skillsMarkdown: '- Formal logic\n- Counter-argumentation\n- Persuasive rhetoric',
+  persona: 'A sharp analytical debater focused on formal logic.',
+  agentsMdSource: '# Logic Falcon Agent\n\nSystem: Analytical debater',
+  apiKeyConfigured: true,
+  elo: {
+    agentId: '00000000-0000-0000-0000-000000000a01',
+    currentElo: 1032,
+    matchesPlayed: 5,
+    matchesWon: 3,
+    matchesForfeited: 0,
+    lastUpdated: '2026-03-01T08:00:00Z',
+  },
+  createdAt: '2026-02-28T10:00:00Z',
+  updatedAt: '2026-02-28T10:00:00Z',
+}
 
 function mockResponse(init: MockResponseInit) {
   return {
@@ -172,6 +198,206 @@ describe('ClawgicAgentsPage', () => {
     expect(await screen.findByText('Logic Falcon')).toBeInTheDocument()
     // Full address is 42 chars, should be truncated to 14 + '...'
     expect(screen.getByText('0x111111111111...')).toBeInTheDocument()
+  })
+
+  // --- API Key Configured Status ---
+
+  it('shows API key configured status for each agent', async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        jsonBody: agentsFixture,
+      })
+    )
+
+    render(<ClawgicAgentsPage />)
+
+    expect(await screen.findByText('Logic Falcon')).toBeInTheDocument()
+    expect(screen.getByText('Configured')).toBeInTheDocument()
+    expect(screen.getByText('Not configured')).toBeInTheDocument()
+  })
+
+  // --- Refresh Button ---
+
+  it('renders Refresh button and refreshes agent list when clicked', async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: [agentsFixture[0]] })
+    )
+
+    render(<ClawgicAgentsPage />)
+    expect(await screen.findByText('Logic Falcon')).toBeInTheDocument()
+
+    // Mock refresh response with both agents
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: agentsFixture })
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh agents' }))
+
+    expect(await screen.findByText('Counter Fox')).toBeInTheDocument()
+  })
+
+  // --- Wallet Filter ---
+
+  it('renders wallet filter input and filters agents when applied', async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: agentsFixture })
+    )
+
+    render(<ClawgicAgentsPage />)
+    expect(await screen.findByText('Logic Falcon')).toBeInTheDocument()
+
+    // Type wallet filter
+    fireEvent.change(screen.getByLabelText('Wallet filter'), {
+      target: { value: '0x1111111111111111111111111111111111111111' },
+    })
+
+    // Mock filtered response
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: [agentsFixture[0]] })
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }))
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+    })
+
+    // Verify the filter was passed to the API
+    const filterCall = mockFetch.mock.calls[1]
+    expect(filterCall[0]).toContain('walletAddress=0x1111111111111111111111111111111111111111')
+  })
+
+  it('shows Clear button when filter is active and clears it', async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: agentsFixture })
+    )
+
+    render(<ClawgicAgentsPage />)
+    expect(await screen.findByText('Logic Falcon')).toBeInTheDocument()
+
+    // No Clear button when filter is empty
+    expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument()
+
+    // Set filter
+    fireEvent.change(screen.getByLabelText('Wallet filter'), {
+      target: { value: '0xabc' },
+    })
+
+    // Clear button appears
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument()
+
+    // Mock refresh for clear
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: agentsFixture })
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+
+    // Filter input should be cleared
+    expect(screen.getByLabelText('Wallet filter')).toHaveValue('')
+  })
+
+  // --- Detail Panel ---
+
+  it('shows View Details button and expands agent detail panel on click', async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: [agentsFixture[0]] })
+    )
+
+    render(<ClawgicAgentsPage />)
+    expect(await screen.findByText('Logic Falcon')).toBeInTheDocument()
+
+    // Mock detail fetch
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: agentDetailFixture })
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'View details' }))
+
+    // Detail panel should show system prompt
+    expect(await screen.findByText('System Prompt')).toBeInTheDocument()
+    expect(screen.getByText(/skilled debater who specializes/)).toBeInTheDocument()
+
+    // Should show Elo stats
+    expect(screen.getByText('Elo Stats')).toBeInTheDocument()
+    expect(screen.getByText(/1032/)).toBeInTheDocument()
+    expect(screen.getByText(/Played: 5/)).toBeInTheDocument()
+    expect(screen.getByText(/Won: 3/)).toBeInTheDocument()
+
+    // Should show skills
+    expect(screen.getByText('Skills')).toBeInTheDocument()
+
+    // Should show AGENTS.md
+    expect(screen.getByText('AGENTS.md Source')).toBeInTheDocument()
+  })
+
+  it('hides detail panel when Hide Details is clicked', async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: [agentsFixture[0]] })
+    )
+
+    render(<ClawgicAgentsPage />)
+    expect(await screen.findByText('Logic Falcon')).toBeInTheDocument()
+
+    // Expand
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: agentDetailFixture })
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'View details' }))
+    expect(await screen.findByText('System Prompt')).toBeInTheDocument()
+
+    // Collapse
+    fireEvent.click(screen.getByRole('button', { name: 'Hide details' }))
+    expect(screen.queryByText('System Prompt')).not.toBeInTheDocument()
+  })
+
+  it('shows error state in detail panel when fetch fails', async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: [agentsFixture[0]] })
+    )
+
+    render(<ClawgicAgentsPage />)
+    expect(await screen.findByText('Logic Falcon')).toBeInTheDocument()
+
+    // Mock detail fetch failure
+    mockFetch.mockRejectedValueOnce(new TypeError('network error'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'View details' }))
+
+    expect(await screen.findByText(/network error/)).toBeInTheDocument()
+  })
+
+  it('shows Show more/Show less for long text in detail panel', async () => {
+    const longPrompt = 'A'.repeat(300)
+    const detailWithLongPrompt = { ...agentDetailFixture, systemPrompt: longPrompt }
+
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: [agentsFixture[0]] })
+    )
+
+    render(<ClawgicAgentsPage />)
+    expect(await screen.findByText('Logic Falcon')).toBeInTheDocument()
+
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: detailWithLongPrompt })
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'View details' }))
+    expect(await screen.findByText('System Prompt')).toBeInTheDocument()
+
+    // Should show truncated text with Show more button
+    expect(screen.getByText('Show more')).toBeInTheDocument()
+
+    // Click Show more
+    fireEvent.click(screen.getByText('Show more'))
+    expect(screen.getByText('Show less')).toBeInTheDocument()
+
+    // Click Show less
+    fireEvent.click(screen.getByText('Show less'))
+    expect(screen.getByText('Show more')).toBeInTheDocument()
   })
 
   // --- Create Agent Form Tests ---
@@ -380,6 +606,7 @@ describe('ClawgicAgentsPage', () => {
           providerType: 'OPENAI',
           providerKeyRef: null,
           persona: null,
+          apiKeyConfigured: true,
           createdAt: '2026-03-01T10:00:00Z',
           updatedAt: '2026-03-01T10:00:00Z',
         }],

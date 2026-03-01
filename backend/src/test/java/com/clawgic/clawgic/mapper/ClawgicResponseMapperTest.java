@@ -58,6 +58,7 @@ class ClawgicResponseMapperTest {
         assertEquals("OPENAI", summary.providerType());
         assertEquals("team/openai/primary", summary.providerKeyRef());
         assertEquals(createdAt, summary.createdAt());
+        assertTrue(summary.apiKeyConfigured());
 
         assertEquals(agentId, detail.agentId());
         assertEquals("Debate with precise logic.", detail.systemPrompt());

@@ -12,8 +12,18 @@ type ClawgicAgentSummary = {
   providerType: string
   providerKeyRef: string | null
   persona: string | null
+  apiKeyConfigured: boolean
   createdAt: string
   updatedAt: string
+}
+
+type AgentElo = {
+  agentId: string
+  currentElo: number
+  matchesPlayed: number
+  matchesWon: number
+  matchesForfeited: number
+  lastUpdated: string | null
 }
 
 type ClawgicAgentDetail = {
@@ -23,8 +33,12 @@ type ClawgicAgentDetail = {
   avatarUrl: string | null
   providerType: string
   providerKeyRef: string | null
+  systemPrompt: string
+  skillsMarkdown: string | null
   persona: string | null
+  agentsMdSource: string | null
   apiKeyConfigured: boolean
+  elo: AgentElo | null
   createdAt: string
   updatedAt: string
 }
@@ -61,6 +75,8 @@ const INITIAL_FORM_STATE: AgentFormState = {
   skillsMarkdown: '',
   agentsMdSource: '',
 }
+
+const DETAIL_TRUNCATE_LENGTH = 200
 
 export function validateAgentForm(form: AgentFormState): AgentFormErrors {
   const errors: AgentFormErrors = {}
@@ -148,6 +164,81 @@ async function requestEvmAccount(): Promise<string | null> {
   }
 }
 
+function ExpandableText({ label, text }: { label: string; text: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const needsTruncation = text.length > DETAIL_TRUNCATE_LENGTH
+
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <pre className="whitespace-pre-wrap break-words text-sm">
+        {expanded || !needsTruncation ? text : truncate(text, DETAIL_TRUNCATE_LENGTH)}
+      </pre>
+      {needsTruncation ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((prev) => !prev)}
+          className="text-xs font-medium text-primary hover:underline"
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
+function AgentDetailPanel({ agentId }: { agentId: string }) {
+  const [detail, setDetail] = useState<ClawgicAgentDetail | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function fetchDetail() {
+      try {
+        setLoading(true)
+        setError(null)
+        const data = await apiClient.get<ClawgicAgentDetail>(`/clawgic/agents/${agentId}`)
+        if (!cancelled) setDetail(data)
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load agent details.')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    fetchDetail()
+    return () => { cancelled = true }
+  }, [agentId])
+
+  if (loading) {
+    return <p className="py-3 text-sm text-muted-foreground">Loading details...</p>
+  }
+
+  if (error || !detail) {
+    return <p className="py-3 text-sm text-red-600">{error || 'Failed to load details.'}</p>
+  }
+
+  return (
+    <div className="mt-4 space-y-4 border-t pt-4">
+      <ExpandableText label="System Prompt" text={detail.systemPrompt} />
+      {detail.persona ? <ExpandableText label="Persona" text={detail.persona} /> : null}
+      {detail.skillsMarkdown ? <ExpandableText label="Skills" text={detail.skillsMarkdown} /> : null}
+      {detail.agentsMdSource ? <ExpandableText label="AGENTS.md Source" text={detail.agentsMdSource} /> : null}
+      {detail.elo ? (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">Elo Stats</p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
+            <p>Elo: <strong>{detail.elo.currentElo}</strong></p>
+            <p>Played: {detail.elo.matchesPlayed}</p>
+            <p>Won: {detail.elo.matchesWon}</p>
+            <p>Forfeited: {detail.elo.matchesForfeited}</p>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export default function ClawgicAgentsPage() {
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -158,9 +249,15 @@ export default function ClawgicAgentsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [submitBanner, setSubmitBanner] = useState<{ tone: 'success' | 'error'; message: string } | null>(null)
   const [walletLoading, setWalletLoading] = useState(false)
+  const [walletFilter, setWalletFilter] = useState('')
+  const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
 
-  const refreshAgents = useCallback(async () => {
-    const fetched = await apiClient.get<ClawgicAgentSummary[]>('/clawgic/agents')
+  const refreshAgents = useCallback(async (filterWallet?: string) => {
+    const endpoint = filterWallet?.trim()
+      ? `/clawgic/agents?walletAddress=${encodeURIComponent(filterWallet.trim())}`
+      : '/clawgic/agents'
+    const fetched = await apiClient.get<ClawgicAgentSummary[]>(endpoint)
     setAgents(fetched)
     return fetched
   }, [])
@@ -243,7 +340,7 @@ export default function ClawgicAgentsPage() {
       setShowForm(false)
 
       try {
-        await refreshAgents()
+        await refreshAgents(walletFilter)
       } catch {
         // Silent — success banner already shown
       }
@@ -275,6 +372,31 @@ export default function ClawgicAgentsPage() {
     }
   }
 
+  async function handleRefresh() {
+    setRefreshing(true)
+    try {
+      await refreshAgents(walletFilter)
+      setErrorMessage(null)
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to refresh agents.')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  async function handleWalletFilterApply() {
+    setRefreshing(true)
+    setExpandedAgentId(null)
+    try {
+      await refreshAgents(walletFilter)
+      setErrorMessage(null)
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to filter agents.')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="clawgic-surface mx-auto max-w-6xl p-8">
@@ -284,7 +406,7 @@ export default function ClawgicAgentsPage() {
     )
   }
 
-  if (errorMessage) {
+  if (errorMessage && agents.length === 0) {
     return (
       <div className="mx-auto max-w-6xl rounded-3xl border border-red-400/30 bg-red-50 p-8">
         <h1 className="text-3xl font-semibold">Agents</h1>
@@ -312,12 +434,53 @@ export default function ClawgicAgentsPage() {
           >
             {showForm ? 'Cancel' : 'Create Agent'}
           </button>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="clawgic-outline-btn"
+            aria-label="Refresh agents"
+          >
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
           <Link href="/clawgic/tournaments" className="clawgic-outline-btn">
             Tournament Lobby
           </Link>
           <Link href="/clawgic/leaderboard" className="clawgic-outline-btn">
             Leaderboard
           </Link>
+        </div>
+
+        {/* Wallet Filter */}
+        <div className="mt-4 flex items-end gap-2">
+          <label className="grid flex-1 gap-1.5 text-sm">
+            <span className="font-medium text-muted-foreground">Filter by wallet</span>
+            <input
+              type="text"
+              value={walletFilter}
+              onChange={(e) => setWalletFilter(e.target.value)}
+              placeholder="0x... (leave empty for all agents)"
+              className="clawgic-select"
+              aria-label="Wallet filter"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={handleWalletFilterApply}
+            disabled={refreshing}
+            className="clawgic-outline-btn"
+          >
+            Filter
+          </button>
+          {walletFilter.trim() ? (
+            <button
+              type="button"
+              onClick={() => { setWalletFilter(''); refreshAgents('').catch(() => {}) }}
+              className="clawgic-outline-btn"
+            >
+              Clear
+            </button>
+          ) : null}
         </div>
       </section>
 
@@ -560,7 +723,7 @@ export default function ClawgicAgentsPage() {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="space-y-1">
                   <h2 className="text-xl font-semibold">{agent.name}</h2>
-                  <div className="grid gap-1 text-sm text-muted-foreground sm:grid-cols-2">
+                  <div className="grid gap-1 text-sm text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
                     <p>Provider: {agent.providerType}</p>
                     <p>
                       Wallet:{' '}
@@ -572,16 +735,35 @@ export default function ClawgicAgentsPage() {
                     {agent.providerKeyRef ? (
                       <p>Model: {agent.providerKeyRef}</p>
                     ) : null}
+                    <p>
+                      API Key:{' '}
+                      <span className={agent.apiKeyConfigured ? 'text-emerald-700' : 'text-red-600'}>
+                        {agent.apiKeyConfigured ? 'Configured' : 'Not configured'}
+                      </span>
+                    </p>
                   </div>
                 </div>
-                <span className="clawgic-badge border-primary/35 bg-primary/10 text-accent-foreground">
-                  {agent.providerType}
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedAgentId(expandedAgentId === agent.agentId ? null : agent.agentId)}
+                    className="clawgic-outline-btn text-xs"
+                    aria-label={expandedAgentId === agent.agentId ? 'Hide details' : 'View details'}
+                  >
+                    {expandedAgentId === agent.agentId ? 'Hide Details' : 'View Details'}
+                  </button>
+                  <span className="clawgic-badge border-primary/35 bg-primary/10 text-accent-foreground">
+                    {agent.providerType}
+                  </span>
+                </div>
               </div>
               {agent.persona ? (
                 <p className="mt-3 text-sm text-muted-foreground">
                   {truncate(agent.persona, 200)}
                 </p>
+              ) : null}
+              {expandedAgentId === agent.agentId ? (
+                <AgentDetailPanel agentId={agent.agentId} />
               ) : null}
             </article>
           ))}

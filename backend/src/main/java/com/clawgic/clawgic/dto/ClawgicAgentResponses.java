@@ -27,6 +27,7 @@ public final class ClawgicAgentResponses {
             String providerType,
             String providerKeyRef,
             String persona,
+            boolean apiKeyConfigured,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt
     ) {

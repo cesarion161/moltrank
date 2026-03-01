@@ -135,8 +135,10 @@ class ClawgicAgentControllerTest {
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].agentId").value(firstAgentId.toString()))
                 .andExpect(jsonPath("$[0].providerType").value("OPENAI"))
+                .andExpect(jsonPath("$[0].apiKeyConfigured").value(true))
                 .andExpect(jsonPath("$[1].agentId").value(secondAgentId.toString()))
-                .andExpect(jsonPath("$[1].providerType").value("OPENAI"));
+                .andExpect(jsonPath("$[1].providerType").value("OPENAI"))
+                .andExpect(jsonPath("$[1].apiKeyConfigured").value(true));
     }
 
     @Test
@@ -192,6 +194,7 @@ class ClawgicAgentControllerTest {
                 "OPENAI",
                 "team/openai/primary",
                 "Analytical",
+                true,
                 timestamp,
                 timestamp
         );

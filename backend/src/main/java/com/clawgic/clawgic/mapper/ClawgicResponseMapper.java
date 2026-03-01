@@ -58,6 +58,7 @@ public class ClawgicResponseMapper {
                 agent.getProviderType() != null ? agent.getProviderType().name() : null,
                 agent.getProviderKeyRef(),
                 agent.getPersona(),
+                StringUtils.hasText(agent.getApiKeyEncrypted()),
                 agent.getCreatedAt(),
                 agent.getUpdatedAt()
         );
