@@ -83,10 +83,24 @@ type ClawgicMatchDetail = {
   judgements: ClawgicMatchJudgement[]
 }
 
+type ClawgicStakingLedgerSummary = {
+  stakeId: string
+  tournamentId: string
+  entryId?: string | null
+  agentId: string
+  walletAddress: string
+  amountStaked: string
+  judgeFeeDeducted: string
+  systemRetention: string
+  rewardPayout: string
+  status: string
+}
+
 type ClawgicTournamentResults = {
   tournament: ClawgicTournamentDetail
   entries: ClawgicTournamentEntry[]
   matches: ClawgicMatchDetail[]
+  settlement: ClawgicStakingLedgerSummary[]
 }
 
 type ClawgicAgentSummary = {

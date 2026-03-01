@@ -869,6 +869,154 @@ PY
   fi
 }
 
+# ─── Phase 10: Verify Settlement / Payment Records ─────────────────
+
+phase_verify_settlement() {
+  log "Phase 10: Verify Settlement / Payment Records"
+
+  if [[ -z "${TOURNAMENT_ID}" ]]; then
+    record_fail "settlement-prerequisites" "missing tournament id"
+    return 1
+  fi
+
+  # Fetch results (which now includes settlement data)
+  if ! assert_request "settlement-results" "GET" "/api/clawgic/tournaments/${TOURNAMENT_ID}/results" "200" ""; then
+    return 1
+  fi
+
+  # Verify settlement array is present
+  local has_settlement
+  has_settlement="$(python3 - "${RESPONSE_BODY}" <<'PY'
+import json
+import sys
+
+data = json.loads(sys.argv[1])
+settlement = data.get("settlement")
+print("true" if settlement is not None and isinstance(settlement, list) else "false")
+PY
+)"
+  if [[ "${has_settlement}" == "true" ]]; then
+    record_pass "results-include-settlement-array"
+  else
+    record_fail "results-include-settlement-array" "settlement field missing or not an array"
+    return 1
+  fi
+
+  # Verify 4 settlement ledger entries (one per agent)
+  local settlement_count
+  settlement_count="$(python3 - "${RESPONSE_BODY}" <<'PY'
+import json
+import sys
+
+data = json.loads(sys.argv[1])
+print(len(data.get("settlement", [])))
+PY
+)"
+  if [[ "${settlement_count}" == "4" ]]; then
+    record_pass "settlement-has-4-entries"
+  else
+    record_fail "settlement-has-4-entries" "expected 4, got ${settlement_count}"
+  fi
+
+  # Verify all entries have SETTLED or FORFEITED status
+  local all_terminal
+  all_terminal="$(python3 - "${RESPONSE_BODY}" <<'PY'
+import json
+import sys
+
+data = json.loads(sys.argv[1])
+settlement = data.get("settlement", [])
+terminal = {"SETTLED", "FORFEITED"}
+all_ok = all(s.get("status") in terminal for s in settlement)
+print("true" if all_ok and settlement else "false")
+PY
+)"
+  if [[ "${all_terminal}" == "true" ]]; then
+    record_pass "all-settlement-entries-terminal"
+  else
+    record_fail "all-settlement-entries-terminal" "not all settlement entries are SETTLED or FORFEITED"
+  fi
+
+  # Verify winner has rewardPayout > 0
+  local winner_id
+  winner_id="$(python3 - "${RESPONSE_BODY}" <<'PY'
+import json
+import sys
+
+data = json.loads(sys.argv[1])
+print(data.get("tournament", {}).get("winnerAgentId", ""))
+PY
+)"
+
+  if [[ -n "${winner_id}" ]]; then
+    local winner_payout
+    winner_payout="$(python3 - "${RESPONSE_BODY}" "${winner_id}" <<'PY'
+import json
+import sys
+from decimal import Decimal
+
+data = json.loads(sys.argv[1])
+winner_id = sys.argv[2]
+settlement = data.get("settlement", [])
+for s in settlement:
+    if s.get("agentId") == winner_id:
+        payout = Decimal(str(s.get("rewardPayout", "0")))
+        print(str(payout))
+        break
+else:
+    print("not_found")
+PY
+)"
+    if [[ "${winner_payout}" == "not_found" ]]; then
+      record_fail "winner-has-settlement-entry" "winner ${winner_id} not found in settlement"
+    elif python3 -c "from decimal import Decimal; exit(0 if Decimal('${winner_payout}') > 0 else 1)" 2>/dev/null; then
+      record_pass "winner-payout-positive (${winner_payout})"
+    else
+      record_fail "winner-payout-positive" "winner payout=${winner_payout}, expected > 0"
+    fi
+
+    # Verify at least one non-winner has rewardPayout == 0
+    local has_zero_payout
+    has_zero_payout="$(python3 - "${RESPONSE_BODY}" "${winner_id}" <<'PY'
+import json
+import sys
+from decimal import Decimal
+
+data = json.loads(sys.argv[1])
+winner_id = sys.argv[2]
+settlement = data.get("settlement", [])
+non_winners = [s for s in settlement if s.get("agentId") != winner_id]
+has_zero = any(Decimal(str(s.get("rewardPayout", "0"))) == 0 for s in non_winners)
+print("true" if has_zero else "false")
+PY
+)"
+    if [[ "${has_zero_payout}" == "true" ]]; then
+      record_pass "non-winner-zero-payout"
+    else
+      record_fail "non-winner-zero-payout" "expected at least one non-winner with payout=0"
+    fi
+  fi
+
+  # Verify amountStaked > 0 for all entries
+  local all_staked
+  all_staked="$(python3 - "${RESPONSE_BODY}" <<'PY'
+import json
+import sys
+from decimal import Decimal
+
+data = json.loads(sys.argv[1])
+settlement = data.get("settlement", [])
+all_ok = all(Decimal(str(s.get("amountStaked", "0"))) > 0 for s in settlement)
+print("true" if all_ok and settlement else "false")
+PY
+)"
+  if [[ "${all_staked}" == "true" ]]; then
+    record_pass "all-entries-have-positive-stake"
+  else
+    record_fail "all-entries-have-positive-stake" "not all settlement entries have amountStaked > 0"
+  fi
+}
+
 # ─── Summary ─────────────────────────────────────────────────────────
 
 print_summary_and_exit() {
@@ -912,6 +1060,7 @@ main() {
   phase_verify_results
   phase_verify_winner_detail
   phase_verify_leaderboard
+  phase_verify_settlement
 
   print_summary_and_exit
 }

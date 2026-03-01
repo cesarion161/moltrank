@@ -146,7 +146,8 @@ class ClawgicTournamentControllerTest {
                 .andExpect(jsonPath("$.matches[0].agent1EloAfter").value(1016))
                 .andExpect(jsonPath("$.matches[0].judgements.length()").value(1))
                 .andExpect(jsonPath("$.matches[0].judgements[0].status").value("ACCEPTED"))
-                .andExpect(jsonPath("$.matches[0].judgements[0].resultJson").isMap());
+                .andExpect(jsonPath("$.matches[0].judgements[0].resultJson").isMap())
+                .andExpect(jsonPath("$.settlement").isArray());
     }
 
     @Test
@@ -384,7 +385,8 @@ class ClawgicTournamentControllerTest {
         return new ClawgicTournamentResponses.TournamentResults(
                 sampleDetail(tournamentId),
                 List.of(sampleEntry(tournamentId, agentOne), sampleEntry(tournamentId, agentTwo)),
-                List.of(matchDetail)
+                List.of(matchDetail),
+                List.of()
         );
     }
 }

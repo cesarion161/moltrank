@@ -546,6 +546,12 @@ class ClawgicTournamentServiceIntegrationTest {
         createTournamentEntry(tournament.getTournamentId(), agentOne, 1, 1030, now.minusHours(2));
         createTournamentEntry(tournament.getTournamentId(), agentTwo, 2, 1025, now.minusHours(2).plusMinutes(1));
 
+        // Create settled staking ledger rows for settlement verification
+        createSettledLedger(tournament.getTournamentId(), agentOne, "0x1111111111111111111111111111111111111301",
+                new BigDecimal("5.000000"), new BigDecimal("5.000000"), ClawgicStakingLedgerStatus.SETTLED, now.minusMinutes(5));
+        createSettledLedger(tournament.getTournamentId(), agentTwo, "0x1111111111111111111111111111111111111302",
+                new BigDecimal("5.000000"), new BigDecimal("0.000000"), ClawgicStakingLedgerStatus.SETTLED, now.minusMinutes(5));
+
         UUID matchId = UUID.randomUUID();
         ClawgicMatch match = new ClawgicMatch();
         match.setMatchId(matchId);
@@ -631,6 +637,20 @@ class ClawgicTournamentServiceIntegrationTest {
         assertTrue(firstTranscriptMessage.hasNonNull("role"));
         assertTrue(firstTranscriptMessage.hasNonNull("phase"));
         assertTrue(firstTranscriptMessage.hasNonNull("content"));
+
+        // Verify settlement data is included in results
+        assertNotNull(results.settlement());
+        assertEquals(2, results.settlement().size());
+        var winnerLedger = results.settlement().stream()
+                .filter(l -> l.agentId().equals(agentOne))
+                .findFirst().orElseThrow();
+        assertEquals(ClawgicStakingLedgerStatus.SETTLED, winnerLedger.status());
+        assertEquals(new BigDecimal("5.000000"), winnerLedger.rewardPayout());
+        var loserLedger = results.settlement().stream()
+                .filter(l -> l.agentId().equals(agentTwo))
+                .findFirst().orElseThrow();
+        assertEquals(ClawgicStakingLedgerStatus.SETTLED, loserLedger.status());
+        assertEquals(new BigDecimal("0.000000"), loserLedger.rewardPayout());
     }
 
     private ClawgicTournament insertTournament(
@@ -720,5 +740,30 @@ class ClawgicTournamentServiceIntegrationTest {
         entry.setCreatedAt(createdAt);
         entry.setUpdatedAt(createdAt);
         clawgicTournamentEntryRepository.saveAndFlush(entry);
+    }
+
+    private void createSettledLedger(
+            UUID tournamentId,
+            UUID agentId,
+            String walletAddress,
+            BigDecimal amountStaked,
+            BigDecimal rewardPayout,
+            ClawgicStakingLedgerStatus status,
+            OffsetDateTime settledAt
+    ) {
+        ClawgicStakingLedger ledger = new ClawgicStakingLedger();
+        ledger.setStakeId(UUID.randomUUID());
+        ledger.setTournamentId(tournamentId);
+        ledger.setAgentId(agentId);
+        ledger.setWalletAddress(walletAddress);
+        ledger.setAmountStaked(amountStaked);
+        ledger.setJudgeFeeDeducted(BigDecimal.ZERO);
+        ledger.setSystemRetention(BigDecimal.ZERO);
+        ledger.setRewardPayout(rewardPayout);
+        ledger.setStatus(status);
+        ledger.setSettledAt(settledAt);
+        ledger.setCreatedAt(settledAt.minusMinutes(10));
+        ledger.setUpdatedAt(settledAt);
+        clawgicStakingLedgerRepository.saveAndFlush(ledger);
     }
 }

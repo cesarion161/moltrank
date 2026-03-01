@@ -180,10 +180,14 @@ public class ClawgicTournamentService {
                         .thenComparing(ClawgicTournamentEntry::getCreatedAt))
                 .toList();
 
+        List<ClawgicStakingLedger> ledgers = clawgicStakingLedgerRepository
+                .findByTournamentIdOrderByCreatedAtAsc(tournamentId);
+
         return new ClawgicTournamentResponses.TournamentResults(
                 clawgicResponseMapper.toTournamentDetailResponse(tournament),
                 clawgicResponseMapper.toTournamentEntryResponses(sortedEntries),
-                matchDetails
+                matchDetails,
+                clawgicResponseMapper.toStakingLedgerSummaryResponses(ledgers)
         );
     }
 

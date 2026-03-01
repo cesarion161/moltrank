@@ -449,6 +449,7 @@ JSON
     assert_json_equals "tournament-results-status" "tournament.status" "SCHEDULED"
     assert_json_length_equals "tournament-results-matches-empty" "matches" "0"
     assert_json_length_equals "tournament-results-entries-initial" "entries" "0"
+    assert_json_length_equals "tournament-results-settlement-empty" "settlement" "0"
   fi
 }
 

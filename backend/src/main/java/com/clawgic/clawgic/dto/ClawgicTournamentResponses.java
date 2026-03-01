@@ -70,7 +70,8 @@ public final class ClawgicTournamentResponses {
     public record TournamentResults(
             TournamentDetail tournament,
             List<TournamentEntry> entries,
-            List<ClawgicMatchResponses.MatchDetail> matches
+            List<ClawgicMatchResponses.MatchDetail> matches,
+            List<ClawgicPaymentResponses.StakingLedgerSummary> settlement
     ) {
     }
 }
