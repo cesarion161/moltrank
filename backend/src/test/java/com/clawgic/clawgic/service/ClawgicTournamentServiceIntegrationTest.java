@@ -39,6 +39,7 @@ import com.clawgic.clawgic.repository.ClawgicUserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import com.clawgic.clawgic.web.TournamentEntryConflictException;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -342,17 +343,14 @@ class ClawgicTournamentServiceIntegrationTest {
                 new ClawgicTournamentRequests.EnterTournamentRequest(agentId)
         );
 
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+        TournamentEntryConflictException ex = assertThrows(TournamentEntryConflictException.class, () ->
                 clawgicTournamentService.enterTournament(
                         tournament.getTournamentId(),
                         new ClawgicTournamentRequests.EnterTournamentRequest(agentId)
                 ));
 
-        assertEquals(HttpStatus.CONFLICT, ex.getStatusCode());
-        assertEquals(
-                "409 CONFLICT \"Agent is already entered in tournament: " + tournament.getTournamentId() + "\"",
-                ex.getMessage()
-        );
+        assertEquals(HttpStatus.CONFLICT, ex.getStatus());
+        assertEquals("already_entered", ex.getCode());
     }
 
     @Test
@@ -384,17 +382,14 @@ class ClawgicTournamentServiceIntegrationTest {
                 new ClawgicTournamentRequests.EnterTournamentRequest(secondAgentId)
         );
 
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+        TournamentEntryConflictException ex = assertThrows(TournamentEntryConflictException.class, () ->
                 clawgicTournamentService.enterTournament(
                         tournament.getTournamentId(),
                         new ClawgicTournamentRequests.EnterTournamentRequest(thirdAgentId)
                 ));
 
-        assertEquals(HttpStatus.CONFLICT, ex.getStatusCode());
-        assertEquals(
-                "409 CONFLICT \"Tournament entry capacity reached: " + tournament.getTournamentId() + "\"",
-                ex.getMessage()
-        );
+        assertEquals(HttpStatus.CONFLICT, ex.getStatus());
+        assertEquals("capacity_reached", ex.getCode());
     }
 
     @Test

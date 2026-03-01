@@ -21,7 +21,6 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -80,7 +79,7 @@ class ClawgicTournamentEntryConflictMatrixWebIntegrationTest {
     }
 
     @Test
-    void scheduledButEntryClosedReturnsConflictDetail() throws Exception {
+    void scheduledButEntryClosedReturnsConflictWithCode() throws Exception {
         OffsetDateTime now = OffsetDateTime.now();
         String wallet = "0x1000000000000000000000000000000000000002";
         createUser(wallet);
@@ -101,12 +100,12 @@ class ClawgicTournamentEntryConflictMatrixWebIntegrationTest {
                                 }
                                 """.formatted(agentId)))
                 .andExpect(status().isConflict())
-                .andExpect(status().reason("Tournament entry window is closed: " + tournament.getTournamentId()))
-                .andExpect(content().string(""));
+                .andExpect(jsonPath("$.code").value("entry_window_closed"))
+                .andExpect(jsonPath("$.message").exists());
     }
 
     @Test
-    void lockedTournamentReturnsConflictDetail() throws Exception {
+    void lockedTournamentReturnsConflictWithCode() throws Exception {
         OffsetDateTime now = OffsetDateTime.now();
         String wallet = "0x1000000000000000000000000000000000000003";
         createUser(wallet);
@@ -127,12 +126,12 @@ class ClawgicTournamentEntryConflictMatrixWebIntegrationTest {
                                 }
                                 """.formatted(agentId)))
                 .andExpect(status().isConflict())
-                .andExpect(status().reason("Tournament is not open for entries: " + tournament.getTournamentId()))
-                .andExpect(content().string(""));
+                .andExpect(jsonPath("$.code").value("tournament_not_open"))
+                .andExpect(jsonPath("$.message").exists());
     }
 
     @Test
-    void fullTournamentReturnsConflictDetail() throws Exception {
+    void fullTournamentReturnsConflictWithCode() throws Exception {
         OffsetDateTime now = OffsetDateTime.now();
         String walletOne = "0x1000000000000000000000000000000000000004";
         String walletTwo = "0x1000000000000000000000000000000000000005";
@@ -159,12 +158,12 @@ class ClawgicTournamentEntryConflictMatrixWebIntegrationTest {
 
         postEntry(tournament.getTournamentId(), agentThreeId)
                 .andExpect(status().isConflict())
-                .andExpect(status().reason("Tournament entry capacity reached: " + tournament.getTournamentId()))
-                .andExpect(content().string(""));
+                .andExpect(jsonPath("$.code").value("capacity_reached"))
+                .andExpect(jsonPath("$.message").exists());
     }
 
     @Test
-    void duplicateEntryReturnsConflictDetail() throws Exception {
+    void duplicateEntryReturnsConflictWithCode() throws Exception {
         OffsetDateTime now = OffsetDateTime.now();
         String wallet = "0x1000000000000000000000000000000000000006";
         createUser(wallet);
@@ -182,8 +181,68 @@ class ClawgicTournamentEntryConflictMatrixWebIntegrationTest {
 
         postEntry(tournament.getTournamentId(), agentId)
                 .andExpect(status().isConflict())
-                .andExpect(status().reason("Agent is already entered in tournament: " + tournament.getTournamentId()))
-                .andExpect(content().string(""));
+                .andExpect(jsonPath("$.code").value("already_entered"))
+                .andExpect(jsonPath("$.message").exists());
+    }
+
+    @Test
+    void invalidAgentReturnsNotFoundWithCode() throws Exception {
+        OffsetDateTime now = OffsetDateTime.now();
+        String wallet = "0x1000000000000000000000000000000000000008";
+        createUser(wallet);
+        ClawgicTournament tournament = insertTournament(
+                "C58 invalid agent",
+                ClawgicTournamentStatus.SCHEDULED,
+                now.plusHours(2),
+                now.plusHours(1),
+                4
+        );
+        UUID nonExistentAgentId = UUID.randomUUID();
+
+        postEntry(tournament.getTournamentId(), nonExistentAgentId)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("invalid_agent"))
+                .andExpect(jsonPath("$.message").exists());
+    }
+
+    @Test
+    void completedTournamentReturnsConflictWithCode() throws Exception {
+        OffsetDateTime now = OffsetDateTime.now();
+        String wallet = "0x1000000000000000000000000000000000000009";
+        createUser(wallet);
+        UUID agentId = createAgent(wallet, "matrix-completed");
+        ClawgicTournament tournament = insertTournament(
+                "C58 completed tournament",
+                ClawgicTournamentStatus.COMPLETED,
+                now.minusHours(2),
+                now.minusHours(3),
+                4
+        );
+
+        postEntry(tournament.getTournamentId(), agentId)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("tournament_not_open"))
+                .andExpect(jsonPath("$.message").exists());
+    }
+
+    @Test
+    void inProgressTournamentReturnsConflictWithCode() throws Exception {
+        OffsetDateTime now = OffsetDateTime.now();
+        String wallet = "0x100000000000000000000000000000000000000a";
+        createUser(wallet);
+        UUID agentId = createAgent(wallet, "matrix-in-progress");
+        ClawgicTournament tournament = insertTournament(
+                "C58 in-progress tournament",
+                ClawgicTournamentStatus.IN_PROGRESS,
+                now.minusHours(1),
+                now.minusHours(2),
+                4
+        );
+
+        postEntry(tournament.getTournamentId(), agentId)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("tournament_not_open"))
+                .andExpect(jsonPath("$.message").exists());
     }
 
     private org.springframework.test.web.servlet.ResultActions postEntry(UUID tournamentId, UUID agentId)

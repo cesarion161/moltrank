@@ -9,6 +9,7 @@ import com.clawgic.clawgic.model.ClawgicTournamentStatus;
 import com.clawgic.clawgic.model.DebatePhase;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.clawgic.clawgic.service.ClawgicTournamentService;
+import com.clawgic.clawgic.web.TournamentEntryConflictException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -173,7 +174,7 @@ class ClawgicTournamentControllerTest {
     void enterTournamentDuplicateEntryReturnsConflict() throws Exception {
         UUID tournamentId = UUID.fromString("00000000-0000-0000-0000-000000000422");
         when(clawgicTournamentService.enterTournament(any(), any(), any()))
-                .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT, "Agent is already entered"));
+                .thenThrow(TournamentEntryConflictException.alreadyEntered("Agent is already entered in this tournament"));
 
         mockMvc.perform(post("/api/clawgic/tournaments/{tournamentId}/enter", tournamentId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -182,14 +183,16 @@ class ClawgicTournamentControllerTest {
                                   "agentId": "00000000-0000-0000-0000-000000000421"
                                 }
                                 """))
-                .andExpect(status().isConflict());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("already_entered"))
+                .andExpect(jsonPath("$.message").exists());
     }
 
     @Test
     void enterTournamentCapacityExceededReturnsConflict() throws Exception {
         UUID tournamentId = UUID.fromString("00000000-0000-0000-0000-000000000423");
         when(clawgicTournamentService.enterTournament(any(), any(), any()))
-                .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT, "Tournament entry capacity reached"));
+                .thenThrow(TournamentEntryConflictException.capacityReached("Tournament is full (4/4)"));
 
         mockMvc.perform(post("/api/clawgic/tournaments/{tournamentId}/enter", tournamentId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -198,7 +201,9 @@ class ClawgicTournamentControllerTest {
                                   "agentId": "00000000-0000-0000-0000-000000000421"
                                 }
                                 """))
-                .andExpect(status().isConflict());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("capacity_reached"))
+                .andExpect(jsonPath("$.message").exists());
     }
 
     @Test

@@ -29,6 +29,7 @@ import com.clawgic.clawgic.repository.ClawgicPaymentAuthorizationRepository;
 import com.clawgic.clawgic.repository.ClawgicStakingLedgerRepository;
 import com.clawgic.clawgic.repository.ClawgicTournamentEntryRepository;
 import com.clawgic.clawgic.repository.ClawgicTournamentRepository;
+import com.clawgic.clawgic.web.TournamentEntryConflictException;
 import com.clawgic.clawgic.web.X402PaymentRequestException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -214,7 +215,7 @@ public class ClawgicTournamentService {
         );
     }
 
-    @Transactional(noRollbackFor = X402PaymentRequestException.class)
+    @Transactional(noRollbackFor = {X402PaymentRequestException.class, TournamentEntryConflictException.class})
     public ClawgicTournamentResponses.TournamentEntry enterTournament(
             UUID tournamentId,
             ClawgicTournamentRequests.EnterTournamentRequest request
@@ -222,7 +223,7 @@ public class ClawgicTournamentService {
         return enterTournament(tournamentId, request, null);
     }
 
-    @Transactional(noRollbackFor = X402PaymentRequestException.class)
+    @Transactional(noRollbackFor = {X402PaymentRequestException.class, TournamentEntryConflictException.class})
     public ClawgicTournamentResponses.TournamentEntry enterTournament(
             UUID tournamentId,
             ClawgicTournamentRequests.EnterTournamentRequest request,
@@ -239,16 +240,14 @@ public class ClawgicTournamentService {
         OffsetDateTime now = OffsetDateTime.now();
         if (tournament.getStatus() != ClawgicTournamentStatus.SCHEDULED) {
             logEntryConflict("tournament_not_open", tournamentId, agentId, tournament, now);
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "Tournament is not open for entries: " + tournamentId
+            throw TournamentEntryConflictException.tournamentNotOpen(
+                    "Tournament is not open for entries (status: " + tournament.getStatus() + ")"
             );
         }
         if (!now.isBefore(tournament.getEntryCloseTime())) {
             logEntryConflict("entry_window_closed", tournamentId, agentId, tournament, now);
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "Tournament entry window is closed: " + tournamentId
+            throw TournamentEntryConflictException.entryWindowClosed(
+                    "Entry window closed at " + tournament.getEntryCloseTime()
             );
         }
 
@@ -260,9 +259,8 @@ public class ClawgicTournamentService {
                 return clawgicResponseMapper.toTournamentEntryResponse(existingEntry);
             }
             logEntryConflict("already_entered", tournamentId, agentId, tournament, now);
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "Agent is already entered in tournament: " + tournamentId
+            throw TournamentEntryConflictException.alreadyEntered(
+                    "Agent is already entered in this tournament"
             );
         }
 
@@ -270,16 +268,14 @@ public class ClawgicTournamentService {
                 clawgicTournamentEntryRepository.findByTournamentIdOrderByCreatedAtAsc(tournamentId);
         if (currentEntries.size() >= tournament.getMaxEntries()) {
             logEntryConflict("capacity_reached", tournamentId, agentId, tournament, now);
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "Tournament entry capacity reached: " + tournamentId
+            throw TournamentEntryConflictException.capacityReached(
+                    "Tournament is full (" + currentEntries.size() + "/" + tournament.getMaxEntries() + ")"
             );
         }
 
         ClawgicAgent agent = clawgicAgentRepository.findById(agentId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Clawgic agent not found: " + agentId
+                .orElseThrow(() -> TournamentEntryConflictException.invalidAgent(
+                        "Agent not found: " + agentId
                 ));
 
         int seedSnapshotElo = clawgicAgentEloRepository.findById(agentId)
