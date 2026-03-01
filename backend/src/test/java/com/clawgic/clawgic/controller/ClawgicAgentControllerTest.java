@@ -62,7 +62,7 @@ class ClawgicAgentControllerTest {
     }
 
     @Test
-    void createAgentValidationFailureReturnsBadRequest() throws Exception {
+    void createAgentValidationFailureReturnsBadRequestWithFieldErrors() throws Exception {
         mockMvc.perform(post("/api/clawgic/agents")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -74,7 +74,34 @@ class ClawgicAgentControllerTest {
                                   "apiKey": ""
                                 }
                                 """))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").exists())
+                .andExpect(jsonPath("$.fieldErrors").isMap())
+                .andExpect(jsonPath("$.fieldErrors.walletAddress").value("walletAddress must be a valid 0x-prefixed EVM address"))
+                .andExpect(jsonPath("$.fieldErrors.name").exists())
+                .andExpect(jsonPath("$.fieldErrors.apiKey").value("apiKey is required"))
+                .andExpect(jsonPath("$.fieldErrors.providerType").value("providerType is required"));
+
+        verify(clawgicAgentService, never()).createAgent(any());
+    }
+
+    @Test
+    void createAgentSingleFieldValidationFailureReturnsSingleFieldError() throws Exception {
+        mockMvc.perform(post("/api/clawgic/agents")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "walletAddress": "0x1234567890abcdef1234567890abcdef12345678",
+                                  "name": "%s",
+                                  "systemPrompt": "Valid prompt",
+                                  "providerType": "OPENAI",
+                                  "apiKey": "sk-valid"
+                                }
+                                """.formatted("A".repeat(121))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.name").value("name must be at most 120 characters"))
+                .andExpect(jsonPath("$.fieldErrors.walletAddress").doesNotExist())
+                .andExpect(jsonPath("$.fieldErrors.apiKey").doesNotExist());
 
         verify(clawgicAgentService, never()).createAgent(any());
     }

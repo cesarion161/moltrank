@@ -249,6 +249,17 @@ export default function ClawgicAgentsPage() {
       }
     } catch (error) {
       if (error instanceof ApiRequestError && error.status === 400) {
+        if (error.fieldErrors && Object.keys(error.fieldErrors).length > 0) {
+          const mapped: AgentFormErrors = {}
+          for (const [field, msg] of Object.entries(error.fieldErrors)) {
+            if (field in INITIAL_FORM_STATE) {
+              mapped[field as keyof AgentFormState] = msg
+            }
+          }
+          if (Object.keys(mapped).length > 0) {
+            setFormErrors(mapped)
+          }
+        }
         setSubmitBanner({
           tone: 'error',
           message: error.detail || 'Validation failed. Check your inputs and try again.',

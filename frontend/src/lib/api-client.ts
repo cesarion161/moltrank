@@ -7,6 +7,7 @@ type ParsedApiErrorBody = {
   message?: string
   error?: string
   title?: string
+  fieldErrors?: Record<string, string>
 }
 
 type ApiRequestErrorInit = {
@@ -15,6 +16,7 @@ type ApiRequestErrorInit = {
   statusText: string
   body: string
   detail?: string
+  fieldErrors?: Record<string, string>
 }
 
 export class ApiRequestError extends Error {
@@ -23,6 +25,7 @@ export class ApiRequestError extends Error {
   readonly statusText: string
   readonly body: string
   readonly detail?: string
+  readonly fieldErrors?: Record<string, string>
 
   constructor(message: string, init: ApiRequestErrorInit) {
     super(message)
@@ -32,6 +35,7 @@ export class ApiRequestError extends Error {
     this.statusText = init.statusText
     this.body = init.body
     this.detail = init.detail
+    this.fieldErrors = init.fieldErrors
   }
 }
 
@@ -42,16 +46,21 @@ export class ApiClient {
     this.baseUrl = baseUrl
   }
 
-  private static parseErrorDetail(errorBody: string): string | undefined {
+  private static parseErrorDetail(errorBody: string): { detail?: string; fieldErrors?: Record<string, string> } {
     if (!errorBody) {
-      return undefined
+      return {}
     }
 
     try {
       const parsed = JSON.parse(errorBody) as ParsedApiErrorBody
-      return parsed.detail || parsed.message || parsed.error || parsed.title
+      return {
+        detail: parsed.detail || parsed.message || parsed.error || parsed.title,
+        fieldErrors: parsed.fieldErrors && typeof parsed.fieldErrors === 'object'
+          ? parsed.fieldErrors
+          : undefined,
+      }
     } catch {
-      return undefined
+      return {}
     }
   }
 
@@ -72,7 +81,7 @@ export class ApiClient {
 
       if (!response.ok) {
         const errorBody = await response.text().catch(() => 'Unable to read error response')
-        const errorDetail = ApiClient.parseErrorDetail(errorBody)
+        const { detail: errorDetail, fieldErrors } = ApiClient.parseErrorDetail(errorBody)
         console.error(`API request failed:`, {
           url,
           status: response.status,
@@ -88,6 +97,7 @@ export class ApiClient {
             statusText: response.statusText,
             body: errorBody,
             detail: errorDetail,
+            fieldErrors,
           }
         )
       }

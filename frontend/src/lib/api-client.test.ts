@@ -160,6 +160,54 @@ describe('ApiClient', () => {
       })
     })
 
+    it('parses fieldErrors from 400 validation response', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        text: () =>
+          Promise.resolve(
+            JSON.stringify({
+              detail: 'Validation failed: name is required',
+              fieldErrors: {
+                name: 'name is required',
+                walletAddress: 'walletAddress must be a valid 0x-prefixed EVM address',
+              },
+            })
+          ),
+      })
+
+      await expect(client.post('/clawgic/agents', {})).rejects.toMatchObject({
+        name: 'ApiRequestError',
+        status: 400,
+        detail: 'Validation failed: name is required',
+        fieldErrors: {
+          name: 'name is required',
+          walletAddress: 'walletAddress must be a valid 0x-prefixed EVM address',
+        },
+      })
+    })
+
+    it('sets fieldErrors to undefined when not present in error response', async () => {
+      expect.assertions(2)
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        text: () =>
+          Promise.resolve(JSON.stringify({ detail: 'Something went wrong' })),
+      })
+
+      try {
+        await client.post('/clawgic/agents', {})
+      } catch (error) {
+        expect(error).toBeInstanceOf(ApiRequestError)
+        if (error instanceof ApiRequestError) {
+          expect(error.fieldErrors).toBeUndefined()
+        }
+      }
+    })
+
     it('throws ApiRequestError with undefined detail for non-json response body', async () => {
       expect.assertions(3)
       mockFetch.mockResolvedValueOnce({

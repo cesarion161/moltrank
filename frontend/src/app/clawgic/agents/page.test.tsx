@@ -397,7 +397,7 @@ describe('ClawgicAgentsPage', () => {
     expect(screen.queryByText('Create New Agent')).not.toBeInTheDocument()
   })
 
-  it('shows error banner when backend returns 400', async () => {
+  it('shows error banner when backend returns 400 with detail only', async () => {
     mockFetch.mockResolvedValueOnce(
       mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: [] })
     )
@@ -414,7 +414,7 @@ describe('ClawgicAgentsPage', () => {
     fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-test' } })
     fireEvent.change(screen.getByLabelText('System prompt'), { target: { value: 'prompt' } })
 
-    // Mock 400 response
+    // Mock 400 response without fieldErrors
     mockFetch.mockResolvedValueOnce(
       mockResponse({
         ok: false,
@@ -429,6 +429,136 @@ describe('ClawgicAgentsPage', () => {
     fireEvent.click(formSubmitBtn)
 
     expect(await screen.findByText('avatarUrl must be a valid absolute URL')).toBeInTheDocument()
+  })
+
+  it('maps backend 400 fieldErrors to per-field error messages', async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: [] })
+    )
+
+    render(<ClawgicAgentsPage />)
+    await screen.findByText(/No agents found/)
+    fireEvent.click(screen.getByRole('button', { name: 'Create Agent' }))
+
+    // Fill all required fields so client validation passes
+    fireEvent.change(screen.getByLabelText('Wallet address'), {
+      target: { value: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+    })
+    fireEvent.change(screen.getByLabelText('Agent name'), { target: { value: 'Test' } })
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-test' } })
+    fireEvent.change(screen.getByLabelText('System prompt'), { target: { value: 'prompt' } })
+
+    // Mock 400 with structured fieldErrors
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        textBody: JSON.stringify({
+          detail: 'Validation failed: name must be at most 120 characters; avatarUrl must be a valid absolute URL',
+          fieldErrors: {
+            name: 'name must be at most 120 characters',
+            avatarUrl: 'avatarUrl must be a valid absolute URL',
+          },
+        }),
+      })
+    )
+
+    const submitBtns = screen.getAllByRole('button', { name: 'Create Agent' })
+    const formSubmitBtn = submitBtns.find((btn) => btn.closest('section')?.querySelector('h2'))!
+    fireEvent.click(formSubmitBtn)
+
+    // Field-level errors should be shown inline
+    expect(await screen.findByText('name must be at most 120 characters')).toBeInTheDocument()
+    expect(screen.getByText('avatarUrl must be a valid absolute URL')).toBeInTheDocument()
+
+    // Banner should also be shown with detail
+    expect(screen.getByText(/Validation failed/)).toBeInTheDocument()
+
+    // Form should remain open so user can fix fields
+    expect(screen.getByText('Create New Agent')).toBeInTheDocument()
+  })
+
+  it('shows generic error on network failure', async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: [] })
+    )
+
+    render(<ClawgicAgentsPage />)
+    await screen.findByText(/No agents found/)
+    fireEvent.click(screen.getByRole('button', { name: 'Create Agent' }))
+
+    fireEvent.change(screen.getByLabelText('Wallet address'), {
+      target: { value: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+    })
+    fireEvent.change(screen.getByLabelText('Agent name'), { target: { value: 'Test' } })
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-test' } })
+    fireEvent.change(screen.getByLabelText('System prompt'), { target: { value: 'prompt' } })
+
+    // Network failure
+    mockFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+
+    const submitBtns = screen.getAllByRole('button', { name: 'Create Agent' })
+    const formSubmitBtn = submitBtns.find((btn) => btn.closest('section')?.querySelector('h2'))!
+    fireEvent.click(formSubmitBtn)
+
+    expect(await screen.findByText('Network error: Failed to fetch')).toBeInTheDocument()
+  })
+
+  it('resets form and hides API key input after successful creation', async () => {
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: [] })
+    )
+
+    render(<ClawgicAgentsPage />)
+    await screen.findByText(/No agents found/)
+    fireEvent.click(screen.getByRole('button', { name: 'Create Agent' }))
+
+    // Fill form
+    fireEvent.change(screen.getByLabelText('Wallet address'), {
+      target: { value: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+    })
+    fireEvent.change(screen.getByLabelText('Agent name'), { target: { value: 'Secure Agent' } })
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-secret-key-123' } })
+    fireEvent.change(screen.getByLabelText('System prompt'), { target: { value: 'Be secure.' } })
+
+    // Verify key is in the input before submit
+    expect(screen.getByLabelText('API key')).toHaveValue('sk-secret-key-123')
+
+    // Mock create + refresh
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({
+        ok: true,
+        status: 201,
+        statusText: 'Created',
+        jsonBody: {
+          agentId: 'secure-id',
+          walletAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          name: 'Secure Agent',
+          avatarUrl: null,
+          providerType: 'OPENAI',
+          providerKeyRef: null,
+          persona: null,
+          apiKeyConfigured: true,
+          createdAt: '2026-03-01T10:00:00Z',
+          updatedAt: '2026-03-01T10:00:00Z',
+        },
+      })
+    )
+    mockFetch.mockResolvedValueOnce(
+      mockResponse({ ok: true, status: 200, statusText: 'OK', jsonBody: [] })
+    )
+
+    const submitBtns = screen.getAllByRole('button', { name: 'Create Agent' })
+    const formSubmitBtn = submitBtns.find((btn) => btn.closest('section')?.querySelector('h2'))!
+    fireEvent.click(formSubmitBtn)
+
+    // After success: form is hidden, so API key input is not in DOM
+    await screen.findByText(/Secure Agent.*created successfully/)
+    expect(screen.queryByLabelText('API key')).not.toBeInTheDocument()
+
+    // Success banner confirms key is configured without revealing it
+    expect(screen.getByText(/API key configured: yes/)).toBeInTheDocument()
   })
 
   it('prefills wallet from connected EVM account', async () => {
