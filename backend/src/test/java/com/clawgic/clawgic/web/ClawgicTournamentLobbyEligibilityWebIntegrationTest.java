@@ -122,7 +122,7 @@ class ClawgicTournamentLobbyEligibilityWebIntegrationTest {
     }
 
     @Test
-    void lobbyListExcludesNonScheduledTournaments() throws Exception {
+    void lobbyListIncludesAllLifecycleStateTournaments() throws Exception {
         OffsetDateTime now = OffsetDateTime.now();
         insertTournament(
                 "Lobby locked test",
@@ -139,16 +139,16 @@ class ClawgicTournamentLobbyEligibilityWebIntegrationTest {
                 4
         );
 
-        // Non-SCHEDULED tournaments are not returned in the lobby listing
-        // (they are only reachable via direct entry POST, covered by conflict matrix test)
+        // LOCKED and IN_PROGRESS tournaments are now returned in the lobby listing
+        // so users can navigate to the live battle arena
         String body = mockMvc.perform(get("/api/clawgic/tournaments"))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
 
-        org.assertj.core.api.Assertions.assertThat(body).doesNotContain("Lobby locked test");
-        org.assertj.core.api.Assertions.assertThat(body).doesNotContain("Lobby in-progress test");
+        org.assertj.core.api.Assertions.assertThat(body).contains("Lobby locked test");
+        org.assertj.core.api.Assertions.assertThat(body).contains("Lobby in-progress test");
     }
 
     @Test

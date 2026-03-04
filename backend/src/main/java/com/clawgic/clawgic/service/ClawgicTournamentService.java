@@ -113,12 +113,24 @@ public class ClawgicTournamentService {
     @Transactional(readOnly = true)
     public List<ClawgicTournamentResponses.TournamentSummary> listUpcomingTournaments() {
         OffsetDateTime now = OffsetDateTime.now();
-        List<ClawgicTournament> upcomingTournaments =
-                clawgicTournamentRepository.findByStatusAndStartTimeAfterOrderByStartTimeAsc(
-                        ClawgicTournamentStatus.SCHEDULED,
-                        now
+        OffsetDateTime completedCutoff = now.minusHours(24);
+        List<ClawgicTournament> tournaments =
+                clawgicTournamentRepository.findByStatusInOrderByStartTimeDesc(
+                        List.of(
+                                ClawgicTournamentStatus.SCHEDULED,
+                                ClawgicTournamentStatus.LOCKED,
+                                ClawgicTournamentStatus.IN_PROGRESS,
+                                ClawgicTournamentStatus.COMPLETED
+                        )
                 );
-        return upcomingTournaments.stream()
+        return tournaments.stream()
+                .filter(tournament -> {
+                    if (tournament.getStatus() == ClawgicTournamentStatus.COMPLETED) {
+                        return tournament.getCompletedAt() != null
+                                && tournament.getCompletedAt().isAfter(completedCutoff);
+                    }
+                    return true;
+                })
                 .map(tournament -> {
                     int currentEntries = (int) clawgicTournamentEntryRepository
                             .countByTournamentId(tournament.getTournamentId());

@@ -28,6 +28,8 @@ public interface ClawgicTournamentRepository extends JpaRepository<ClawgicTourna
             OffsetDateTime now
     );
 
+    List<ClawgicTournament> findByStatusInOrderByStartTimeDesc(List<ClawgicTournamentStatus> statuses);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select t from ClawgicTournament t where t.tournamentId = :tournamentId")
     java.util.Optional<ClawgicTournament> findByTournamentIdForUpdate(@Param("tournamentId") UUID tournamentId);

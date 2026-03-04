@@ -142,7 +142,7 @@ class ClawgicTournamentServiceIntegrationTest {
     }
 
     @Test
-    void listUpcomingTournamentsReturnsOnlyScheduledFutureTournamentsInOrder() {
+    void listUpcomingTournamentsReturnsAllLifecycleStates() {
         OffsetDateTime now = OffsetDateTime.now();
         ClawgicTournament futureEarly = insertTournament(
                 "future early",
@@ -156,15 +156,33 @@ class ClawgicTournamentServiceIntegrationTest {
                 now.plusHours(4),
                 now.plusHours(3)
         );
-        insertTournament("past", ClawgicTournamentStatus.SCHEDULED, now.minusHours(1), now.minusHours(2));
-        insertTournament("locked", ClawgicTournamentStatus.LOCKED, now.plusHours(5), now.plusHours(4));
+        insertTournament("past scheduled", ClawgicTournamentStatus.SCHEDULED, now.minusHours(1), now.minusHours(2));
+        ClawgicTournament locked = insertTournament("locked", ClawgicTournamentStatus.LOCKED, now.plusHours(5), now.plusHours(4));
+        ClawgicTournament inProgress = insertTournament("in progress", ClawgicTournamentStatus.IN_PROGRESS, now.minusMinutes(10), now.minusMinutes(20));
+        ClawgicTournament completedRecent = insertTournamentWithCompletedAt(
+                "completed recent", ClawgicTournamentStatus.COMPLETED, now.minusHours(2), now.minusHours(3), now.minusHours(1)
+        );
+        insertTournamentWithCompletedAt(
+                "completed old", ClawgicTournamentStatus.COMPLETED, now.minusHours(48), now.minusHours(49), now.minusHours(30)
+        );
+        insertTournament("cancelled", ClawgicTournamentStatus.CANCELLED, now.plusHours(6), now.plusHours(5));
 
         List<ClawgicTournamentResponses.TournamentSummary> upcoming =
                 clawgicTournamentService.listUpcomingTournaments();
 
-        assertEquals(2, upcoming.size());
-        assertEquals(futureEarly.getTournamentId(), upcoming.get(0).tournamentId());
-        assertEquals(futureLate.getTournamentId(), upcoming.get(1).tournamentId());
+        // Should include test-created tournaments: past scheduled, in progress, completed recent, future early, future late, locked
+        // Should exclude: completed old (>24h), cancelled
+        List<UUID> ids = upcoming.stream().map(ClawgicTournamentResponses.TournamentSummary::tournamentId).toList();
+        assertTrue(ids.contains(futureEarly.getTournamentId()));
+        assertTrue(ids.contains(futureLate.getTournamentId()));
+        assertTrue(ids.contains(locked.getTournamentId()));
+        assertTrue(ids.contains(inProgress.getTournamentId()));
+        assertTrue(ids.contains(completedRecent.getTournamentId()));
+        // Locked/In-progress/completed should have canEnter=false
+        ClawgicTournamentResponses.TournamentSummary lockedSummary = upcoming.stream()
+                .filter(s -> s.tournamentId().equals(locked.getTournamentId())).findFirst().orElseThrow();
+        assertFalse(lockedSummary.canEnter());
+        assertEquals(TournamentEntryState.TOURNAMENT_NOT_OPEN, lockedSummary.entryState());
     }
 
     @Test
@@ -180,9 +198,9 @@ class ClawgicTournamentServiceIntegrationTest {
         List<ClawgicTournamentResponses.TournamentSummary> upcoming =
                 clawgicTournamentService.listUpcomingTournaments();
 
-        assertEquals(1, upcoming.size());
-        ClawgicTournamentResponses.TournamentSummary summary = upcoming.getFirst();
-        assertEquals(tournament.getTournamentId(), summary.tournamentId());
+        ClawgicTournamentResponses.TournamentSummary summary = upcoming.stream()
+                .filter(s -> s.tournamentId().equals(tournament.getTournamentId()))
+                .findFirst().orElseThrow();
         assertEquals(0, summary.currentEntries());
         assertTrue(summary.canEnter());
         assertEquals(TournamentEntryState.OPEN, summary.entryState());
@@ -193,7 +211,7 @@ class ClawgicTournamentServiceIntegrationTest {
     @Test
     void listUpcomingTournamentsReturnsEntryWindowClosedForExpiredWindow() {
         OffsetDateTime now = OffsetDateTime.now();
-        insertTournament(
+        ClawgicTournament windowClosed = insertTournament(
                 "window closed",
                 ClawgicTournamentStatus.SCHEDULED,
                 now.plusHours(3),
@@ -203,8 +221,9 @@ class ClawgicTournamentServiceIntegrationTest {
         List<ClawgicTournamentResponses.TournamentSummary> upcoming =
                 clawgicTournamentService.listUpcomingTournaments();
 
-        assertEquals(1, upcoming.size());
-        ClawgicTournamentResponses.TournamentSummary summary = upcoming.getFirst();
+        ClawgicTournamentResponses.TournamentSummary summary = upcoming.stream()
+                .filter(s -> s.tournamentId().equals(windowClosed.getTournamentId()))
+                .findFirst().orElseThrow();
         assertFalse(summary.canEnter());
         assertEquals(TournamentEntryState.ENTRY_WINDOW_CLOSED, summary.entryState());
         assertNotNull(summary.entryStateReason());
@@ -239,8 +258,9 @@ class ClawgicTournamentServiceIntegrationTest {
         List<ClawgicTournamentResponses.TournamentSummary> upcoming =
                 clawgicTournamentService.listUpcomingTournaments();
 
-        assertEquals(1, upcoming.size());
-        ClawgicTournamentResponses.TournamentSummary summary = upcoming.getFirst();
+        ClawgicTournamentResponses.TournamentSummary summary = upcoming.stream()
+                .filter(s -> s.tournamentId().equals(tournament.getTournamentId()))
+                .findFirst().orElseThrow();
         assertEquals(2, summary.currentEntries());
         assertFalse(summary.canEnter());
         assertEquals(TournamentEntryState.CAPACITY_REACHED, summary.entryState());
@@ -269,8 +289,9 @@ class ClawgicTournamentServiceIntegrationTest {
         List<ClawgicTournamentResponses.TournamentSummary> upcoming =
                 clawgicTournamentService.listUpcomingTournaments();
 
-        assertEquals(1, upcoming.size());
-        ClawgicTournamentResponses.TournamentSummary summary = upcoming.getFirst();
+        ClawgicTournamentResponses.TournamentSummary summary = upcoming.stream()
+                .filter(s -> s.tournamentId().equals(tournament.getTournamentId()))
+                .findFirst().orElseThrow();
         assertEquals(1, summary.currentEntries());
         assertTrue(summary.canEnter());
         assertEquals(TournamentEntryState.OPEN, summary.entryState());
@@ -678,6 +699,28 @@ class ClawgicTournamentServiceIntegrationTest {
         tournament.setStartTime(startTime);
         tournament.setEntryCloseTime(entryCloseTime);
         tournament.setBaseEntryFeeUsdc(new BigDecimal("5.000000"));
+        tournament.setCreatedAt(entryCloseTime.minusMinutes(10));
+        tournament.setUpdatedAt(entryCloseTime.minusMinutes(10));
+        return clawgicTournamentRepository.saveAndFlush(tournament);
+    }
+
+    private ClawgicTournament insertTournamentWithCompletedAt(
+            String topic,
+            ClawgicTournamentStatus status,
+            OffsetDateTime startTime,
+            OffsetDateTime entryCloseTime,
+            OffsetDateTime completedAt
+    ) {
+        ClawgicTournament tournament = new ClawgicTournament();
+        tournament.setTournamentId(UUID.randomUUID());
+        tournament.setTopic(topic);
+        tournament.setStatus(status);
+        tournament.setBracketSize(4);
+        tournament.setMaxEntries(4);
+        tournament.setStartTime(startTime);
+        tournament.setEntryCloseTime(entryCloseTime);
+        tournament.setBaseEntryFeeUsdc(new BigDecimal("5.000000"));
+        tournament.setCompletedAt(completedAt);
         tournament.setCreatedAt(entryCloseTime.minusMinutes(10));
         tournament.setUpdatedAt(entryCloseTime.minusMinutes(10));
         return clawgicTournamentRepository.saveAndFlush(tournament);
